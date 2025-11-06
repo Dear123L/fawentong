@@ -1,18 +1,16 @@
-package com.example.entity;
+package com.example.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.Date;
-
+/**
+ * @author lhh
+ */
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
-public class User {
-    private Long id;
-    private String openId;
+public class UserInfoDTO {
     private String nickName;
     private String avatarUrl;
-    private Date createdTime;
 }
