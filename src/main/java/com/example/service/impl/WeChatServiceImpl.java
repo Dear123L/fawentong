@@ -29,21 +29,21 @@ public class WeChatServiceImpl implements WeChatService {
     public JsonResponse login(String code, String nickName, String avatarUrl) {
         // TODO: 上线前恢复微信真实接口调用！
         // 1. 请求微信服务器获取 openid/session_key
-        String url = String.format(
-                "https://api.weixin.qq.com/sns/jscode2session?appid=%s&secret=%s&js_code=%s&grant_type=authorization_code",
-                weChatConfig.getAppId(), weChatConfig.getAppSecret(), code);
-
-        RestTemplate restTemplate = new RestTemplate();
-        String response = restTemplate.getForObject(url, String.class);
-
-        JSONObject json = JSONObject.parseObject(response); // 解析 JSON 字符串
-        String openId = json.getString("openid");
-        String sessionKey = json.getString("session_key");
-        if (openId == null || openId.isEmpty()) {
-            throw new RuntimeException("微信登录失败:" + response);
-        }
+//        String url = String.format(
+//                "https://api.weixin.qq.com/sns/jscode2session?appid=%s&secret=%s&js_code=%s&grant_type=authorization_code",
+//                weChatConfig.getAppId(), weChatConfig.getAppSecret(), code);
+//
+//        RestTemplate restTemplate = new RestTemplate();
+//        String response = restTemplate.getForObject(url, String.class);
+//
+//        JSONObject json = JSONObject.parseObject(response); // 解析 JSON 字符串
+//        String openId = json.getString("openid");
+//        String sessionKey = json.getString("session_key");
+//        if (openId == null || openId.isEmpty()) {
+//            throw new RuntimeException("微信登录失败:" + response);
+//        }
         // 🎯 临时测试：直接使用模拟openId，跳过微信验证
-//        String openId = "test" + Math.abs(code.hashCode());
+        String openId = "test" + Math.abs(code.hashCode());
 
         // 2. 查找或创建用户
         User user = userMapper.findByOpenId(openId);

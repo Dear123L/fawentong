@@ -1,10 +1,13 @@
 package com.example.mapper;
 
 import com.example.entity.Favorite;
+import com.example.vo.PostListVO;
 import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Select;
+
+import java.util.List;
 
 /**
  * @author lhh
@@ -20,4 +23,7 @@ public interface FavoriteMapper {
 
     @Delete("DELETE FROM favorite WHERE id = #{id}")
     void delete(Long id);
+
+    @Select("SELECT id,title,content,coverImage FROM favorite WHERE user_id = #{userId}")
+    List<PostListVO> selectFavoritesByUserId(Long userId);
 }

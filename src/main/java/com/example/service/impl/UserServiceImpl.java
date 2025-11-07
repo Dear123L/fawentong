@@ -4,13 +4,17 @@ import com.example.dto.UserInfoDTO;
 import com.example.dto.UserUpdateDTO;
 import com.example.entity.Favorite;
 import com.example.mapper.FavoriteMapper;
+import com.example.mapper.PostMapper;
 import com.example.mapper.UserMapper;
 import com.example.service.UserService;
 import com.example.util.JsonResponse;
 import com.example.util.SecurityUtils;
 import com.example.util.UserContext;
+import com.example.vo.PostListVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+
+import java.util.List;
 
 /**
  * @author lhh
@@ -21,6 +25,8 @@ public class UserServiceImpl implements UserService {
     private UserMapper userMapper;
     @Autowired
     private FavoriteMapper favoriteMapper;
+    @Autowired
+    private PostMapper postMapper;
 
     @Override
     public JsonResponse getUserInfo() {
@@ -57,6 +63,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public boolean toggleFavorite(Long userId,Long postId) {
+        if (postId == null || !postMapper.existPostById(postId)) throw new RuntimeException("帖子不存在");
         Favorite favorite = favoriteMapper.findByUserAndPost(userId, postId);
         if (favorite == null) {
             favoriteMapper.insert(userId, postId);
@@ -65,5 +72,11 @@ public class UserServiceImpl implements UserService {
             favoriteMapper.delete(favorite.getId());
             return false;
         }
+    }
+
+    @Override
+    public List<PostListVO> getUserFavorites(Long userId) {
+        List<PostListVO> postListVOS = favoriteMapper.selectFavoritesByUserId(userId);
+        return postListVOS;
     }
 }

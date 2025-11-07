@@ -23,6 +23,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                     FilterChain filterChain)
             throws ServletException, IOException {
 
+        String requestURI = request.getRequestURI();
+
+        // 添加静态资源放行
+        if (requestURI.startsWith("/static/")) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
         // 跳过登录接口的JWT验证
         if (request.getRequestURI().equals("/api/wechat/login")) {
             filterChain.doFilter(request, response);

@@ -41,6 +41,9 @@ public class UserController {
         }
     }
 
+    /**
+     * 收藏/取消收藏
+     */
     @PostMapping("/favorite/toggle")
     public JsonResponse toggleFavorite(@RequestParam("postId") Long postId) {
         try {
@@ -53,6 +56,24 @@ public class UserController {
             return JsonResponse.success(message, data);
         }catch (Exception e){
             log.error("收藏/取消收藏操作失败, postId: {}, userId: {}", postId, UserContext.getCurrentUserId(), e);
+            if (e.getMessage().contains("帖子不存在")) {
+                return JsonResponse.fail(404, "帖子不存在");
+            }
             return JsonResponse.fail(400, "操作失败，请重试");        }
+    }
+
+    /**
+     * 获取用户收藏的帖子列表
+     */
+    @GetMapping("/favorite/list")
+    public JsonResponse getUserFavorites() {
+        try {
+            Long userId = UserContext.getCurrentUserId();
+            if (!SecurityUtils.isLogin()||userId==null) return JsonResponse.authError("用户未登录");
+            return JsonResponse.success("获取用户收藏的帖子列表成功", userService.getUserFavorites(userId));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return JsonResponse.fail(400, "获取用户收藏的帖子列表失败");
+        }
     }
 }

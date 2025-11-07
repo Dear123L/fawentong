@@ -29,9 +29,10 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(authz -> authz
+                        .requestMatchers("/static/**").permitAll()
                         .requestMatchers("/api/wechat/login").permitAll()
                         .requestMatchers("/api/**").authenticated()
-                        .anyRequest().authenticated()
+                        .anyRequest().permitAll()
                 )
                 // 关键修改：禁用Session创建，避免默认的登录页面
                 .sessionManagement(session -> session
