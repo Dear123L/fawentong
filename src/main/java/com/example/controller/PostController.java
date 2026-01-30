@@ -1,5 +1,6 @@
 package com.example.controller;
 
+import com.example.enums.TemplateType;
 import com.example.service.PostService;
 import com.example.util.JsonResponse;
 import com.example.util.SecurityUtils;
@@ -7,10 +8,7 @@ import com.example.util.UserContext;
 import com.example.vo.PostDetailVO;
 import com.example.vo.PostListVO;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
@@ -52,6 +50,22 @@ public class PostController {
             return JsonResponse.success("获取帖子详情成功",postDetail);
         }catch (Exception e){
             return JsonResponse.fail(400,"获取帖子详情失败");
+        }
+    }
+
+    /**
+     * 直接下载模版文件
+     * @return
+     */
+    @GetMapping("/download/template/{fileId}")
+    public JsonResponse downloadTemplateFile(@PathVariable("fileId") Integer fileId) {
+        try {
+            Long userId = UserContext.getCurrentUserId();
+            if (userId == null|| !SecurityUtils.isLogin()) return JsonResponse.authError("用户未登录");
+            TemplateType templateFile = postService.downloadTemplateFile(fileId);
+            return JsonResponse.success("下载成功",templateFile);
+        }catch (Exception e){
+            return JsonResponse.fail(400,"下载失败");
         }
     }
 }

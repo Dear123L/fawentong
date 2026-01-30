@@ -1,5 +1,6 @@
 package com.example.service.impl;
 
+import com.example.enums.TemplateType;
 import com.example.mapper.CategoryMapper;
 import com.example.mapper.PostMapper;
 import com.example.service.PostService;
@@ -31,5 +32,13 @@ public class PostServiceImpl implements PostService {
         PostDetailVO postDetailVO = postMapper.findById(id);
         if (postDetailVO==null) throw new RuntimeException("帖子不存在");
         return postDetailVO;
+    }
+
+    @Override
+    public TemplateType downloadTemplateFile(Integer fileId) {
+        if (fileId==null) throw new RuntimeException("文件ID不能为空");
+        TemplateType fileType = TemplateType.getByFileId(fileId);
+        if (fileType==null) throw new RuntimeException("文件不存在");
+        return fileType;
     }
 }
