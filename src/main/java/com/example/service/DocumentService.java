@@ -1,5 +1,6 @@
 package com.example.service;
 
+import com.example.dto.ConsumerComplaintRequestDTO;
 import com.example.dto.DepositRefundRequestDTO;
 import com.example.util.JsonResponse;
 
@@ -32,4 +33,14 @@ public interface DocumentService {
      * @return 文件名
      */
     String getFileName(DepositRefundRequestDTO requestDTO);
+
+    /**
+     * 生成消费者协会投诉书
+     */
+    byte[] generateConsumerComplaintLetter(ConsumerComplaintRequestDTO requestDTO) throws IOException;
+
+    /**
+     * 获取消费者协会投诉书文件名
+     */
+    String getConsumerComplaintFileName(ConsumerComplaintRequestDTO requestDTO);
 }

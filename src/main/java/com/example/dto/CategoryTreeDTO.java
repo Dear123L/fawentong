@@ -15,7 +15,6 @@ public class CategoryTreeDTO {
     private Long parentId;
     private Integer level;
     private String icon;
-    // ✅ 只在DTO中加children
     private List<CategoryTreeDTO> children;
 
     public CategoryTreeDTO(Category category) {

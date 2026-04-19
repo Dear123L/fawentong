@@ -10,7 +10,7 @@ public class ResultCode {
 //    参数错误
     public static int PARAM_ERROR=400;
 
-//    认证失败（请求头有误）
+//    认证失败
     public static int UNAUTHORIZED = 401;
 
 //    系统错误

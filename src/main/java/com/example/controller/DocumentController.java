@@ -1,5 +1,6 @@
 package com.example.controller;
 
+import com.example.dto.ConsumerComplaintRequestDTO;
 import com.example.dto.DepositRefundRequestDTO;
 import com.example.service.DocumentService;
 import com.example.util.JsonResponse;
@@ -61,39 +62,6 @@ public class DocumentController {
         }
     }
 
-    /**
-     * 方案2：直接下载文件（最简单）
-     * 前端调用这个API，浏览器会自动下载文件
-     */
-//    @PostMapping("/download/deposit-refund")
-//    public ResponseEntity<byte[]> downloadDepositRefundLetter(@RequestBody DepositRefundRequestDTO requestDTO) {
-//        try {
-//            // 1. 生成文档内容
-//            byte[] documentBytes = documentService.generateDepositRefundLetter(requestDTO);
-//
-//            // 2. 获取文件名
-//            String fileName = documentService.getFileName(requestDTO);
-//
-//            // 3. 设置响应头
-//            HttpHeaders headers = new HttpHeaders();
-//            headers.setContentType(MediaType.APPLICATION_OCTET_STREAM);
-//            headers.setContentDispositionFormData("attachment", fileName);
-//            headers.setCacheControl("no-cache, no-store, must-revalidate");
-//            headers.setPragma("no-cache");
-//            headers.setExpires(0);
-//
-//            // 4. 返回文件流
-//            return ResponseEntity.ok()
-//                    .headers(headers)
-//                    .body(documentBytes);
-//
-//        } catch (Exception e) {
-//            e.printStackTrace();
-//            String errorMessage = "生成文档失败: " + e.getMessage();
-//            return ResponseEntity.internalServerError()
-//                    .body(errorMessage.getBytes(StandardCharsets.UTF_8));
-//        }
-//    }
 
     /**
      * 最简单的解决方案：使用英文文件名
@@ -124,6 +92,40 @@ public class DocumentController {
         } catch (Exception e) {
             e.printStackTrace();
             String errorMessage = "生成文档失败: " + e.getMessage();
+            return ResponseEntity.internalServerError()
+                    .body(errorMessage.getBytes(StandardCharsets.UTF_8));
+        }
+    }
+
+    /**
+     * 生成消费者协会投诉书 - 直接下载（英文文件名）
+     */
+    @PostMapping("/download/consumer-complaint")
+    public ResponseEntity<byte[]> downloadConsumerComplaintLetter(@RequestBody ConsumerComplaintRequestDTO requestDTO) {
+        try {
+            // 1. 生成文档内容
+            byte[] documentBytes = documentService.generateConsumerComplaintLetter(requestDTO);
+
+            // 2. 使用英文文件名避免编码问题
+            String fileName = "consumer_complaint_" + System.currentTimeMillis() + ".docx";
+
+            // 3. 设置响应头
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.wordprocessingml.document"));
+            headers.setContentDispositionFormData("attachment", fileName);
+            headers.setCacheControl("no-cache, no-store, must-revalidate");
+            headers.setPragma("no-cache");
+            headers.setExpires(0);
+            headers.setContentLength(documentBytes.length);
+
+            // 4. 返回文件流
+            return ResponseEntity.ok()
+                    .headers(headers)
+                    .body(documentBytes);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            String errorMessage = "生成消费者协会投诉书失败: " + e.getMessage();
             return ResponseEntity.internalServerError()
                     .body(errorMessage.getBytes(StandardCharsets.UTF_8));
         }

@@ -35,18 +35,6 @@ public class CategoryController {
     }
 
     /**
-     * 根据分类名称获取该分类的完整树形结构
-     */
-//    @GetMapping("/tree/name/{categoryName}")
-//    public JsonResponse getCategoryTreeByName(@PathVariable String categoryName) {
-//        CategoryTreeDTO categoryTree = categoryService.getCategoryTreeByName(categoryName);
-//        if (categoryTree == null) {
-//            return ApiResult.error("分类不存在: " + categoryName);
-//        }
-//        return ApiResult.success(categoryTree);
-//    }
-
-    /**
      * 根据分类ID获取该分类的完整树形结构
      */
     @GetMapping("/tree/id/{categoryId}")

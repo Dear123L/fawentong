@@ -13,7 +13,7 @@ public class SecurityUtils {
         if (authentication != null && authentication.isAuthenticated()) {
             Object principal = authentication.getPrincipal();
             if (principal instanceof String) {
-                return (String) principal; // 这里就是openId
+                return (String) principal;
             }
         }
         throw new RuntimeException("用户未登录");

@@ -31,10 +31,13 @@ public class SecurityConfig {
                 .authorizeHttpRequests(authz -> authz
                         .requestMatchers("/static/**").permitAll()
                         .requestMatchers("/api/wechat/login").permitAll()
-                        .requestMatchers("/api/**").authenticated()
+//                        .requestMatchers("/api/contract/**").permitAll()   // TODO 注释
+//                        .requestMatchers("/ai/legal").permitAll()   // TODO 注释
+//                         .requestMatchers("/api/document/**").permitAll()   // TODO 注释
+                        .requestMatchers("/api/**").authenticated()  // 这行要保留
                         .anyRequest().permitAll()
                 )
-                // 关键修改：禁用Session创建，避免默认的登录页面
+                // 禁用Session创建，避免默认的登录页面
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )

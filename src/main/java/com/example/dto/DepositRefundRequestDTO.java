@@ -14,9 +14,6 @@ import java.util.List;
 @AllArgsConstructor
 @NoArgsConstructor
 public class DepositRefundRequestDTO {
-    // 函件信息
-    private String letterSerial;    // 函字
-    private String letterNumber;    // 编号
 
     // 收函方信息
     private String recipientName;   // 姓名/公司名称

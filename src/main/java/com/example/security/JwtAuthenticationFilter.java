@@ -25,6 +25,21 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         String requestURI = request.getRequestURI();
 
+//        if (requestURI.startsWith("/api/document/")) {
+//            filterChain.doFilter(request, response);
+//            return;
+//        }
+
+//        if (requestURI.startsWith("/api/contract/")) {
+//            filterChain.doFilter(request, response);
+//            return;
+//        }
+
+//        if (requestURI.startsWith("/ai/legal/")) {
+//            filterChain.doFilter(request, response);
+//            return;
+//        }
+
         // 添加静态资源放行
         if (requestURI.startsWith("/static/")) {
             filterChain.doFilter(request, response);
