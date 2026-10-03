@@ -31,8 +31,11 @@ public class GenerateNode {
     @Value("${dashscope.api.model:deepseek-v3}")
     private String modelName;
 
-    /** 拒答文案：同时被外层节点用于 rejected 判定（contains 匹配） */
-    static final String REJECT_ANSWER = "抱歉，知识库中未检索到相关合同条款，无法作答。";
+    /**
+     * 拒答文案：检索不到可用条款时的固定话术。
+     * 外层 {@code RetrieverAgentNode} 用 contains("无法作答") 做 rejected 判定，改写此文案须同步检查该判定。
+     */
+    static final String REJECT_ANSWER = "知识库里没检索到，无法作答。";
 
     public CompletableFuture<Map<String, Object>> execute(AgenticState state) {
         return CompletableFuture.supplyAsync(() -> {
