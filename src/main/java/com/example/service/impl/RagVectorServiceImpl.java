@@ -1,8 +1,8 @@
 package com.example.service.impl;
 
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
+import co.elastic.clients.elasticsearch._types.KnnQuery;
 import co.elastic.clients.elasticsearch._types.query_dsl.Query;
-import co.elastic.clients.elasticsearch._types.query_dsl.TextQueryType;
 import co.elastic.clients.elasticsearch.core.BulkRequest;
 import co.elastic.clients.elasticsearch.core.SearchResponse;
 import co.elastic.clients.elasticsearch.core.search.Hit;
@@ -89,7 +89,10 @@ public class RagVectorServiceImpl implements RagVectorService {
                             .properties("clauseId", p -> p.keyword(k -> k))
                             .properties("chunkIndex", p -> p.integer(i -> i))
                             .properties("vector", p -> p
-                                    .denseVector(dv -> dv.dimension(EMBED_DIM).index(true).similarity("cosine")))));
+                                    .denseVector(dv -> dv
+                                            .dims(EMBED_DIM)
+                                            .index(true)
+                                            .similarity("cosine")))));
             log.info("RAG 索引创建成功: {} (dense_vector dim={})", index, EMBED_DIM);
         } catch (Exception e) {
             log.error("初始化 ES 索引失败: {}", esConfig.getIndexName(), e);
@@ -108,7 +111,7 @@ public class RagVectorServiceImpl implements RagVectorService {
         documentMapper.insert(doc);
 
         try {
-            String dir = resolveUploadDir();
+            Path dir = resolveUploadDir();
             Files.createDirectories(dir);
             String stored = kbId + "_" + doc.getId() + "_"
                     + (doc.getFileName() == null ? "upload" : doc.getFileName());
@@ -147,7 +150,7 @@ public class RagVectorServiceImpl implements RagVectorService {
         BulkRequest.Builder bulk = new BulkRequest.Builder();
         for (int i = 0; i < chunks.size(); i++) {
             String chunk = chunks.get(i);
-            List<Double> vector = embed(chunk);
+            List<Float> vector = embed(chunk);
             Map<String, Object> src = new LinkedHashMap<>();
             src.put("content", chunk);
             src.put("kbId", String.valueOf(kbId));
@@ -179,12 +182,13 @@ public class RagVectorServiceImpl implements RagVectorService {
     private List<Map<String, Object>> bm25Search(Long kbId, String query, int topK) {
         List<Map<String, Object>> out = new ArrayList<>();
         try {
+            // 多层嵌套 lambda 会让 javac 丢失类型推断，故先构造 term 查询再传入 filter
+            Query kbFilter = Query.of(t -> t.term(tm -> tm.field("kbId").value(String.valueOf(kbId))));
             Query q = Query.of(t -> t.bool(b -> b
                     .must(m -> m.match(mm -> mm
                             .field("content")
-                            .query(query)
-                            .type(TextQueryType.BestFields))))
-                    .filter(f -> f.term(tm -> tm.field("kbId").value(String.valueOf(kbId)))));
+                            .query(query)))
+                    .filter(kbFilter)));
 
             SearchResponse<Map> resp = esClient.search(s -> s
                             .index(esConfig.getIndexName())
@@ -208,16 +212,21 @@ public class RagVectorServiceImpl implements RagVectorService {
     private List<Map<String, Object>> knnSearch(Long kbId, String query, int topK) {
         List<Map<String, Object>> out = new ArrayList<>();
         try {
-            List<Double> qv = embed(query);
+            List<Float> qv = embed(query);
+            // 同上：term 查询先抽变量，规避嵌套 lambda 的类型推断丢失
+            Query kbFilter = Query.of(t -> t.term(tm -> tm.field("kbId").value(String.valueOf(kbId))));
+            // ES 8.15.0 的 KnnQuery.Builder 无 k() 方法（8.15.5+ 才有），
+            // 返回条数由 search().size(topK) 控制，numCandidates 决定候选池大小
+            KnnQuery knn = KnnQuery.of(k -> k
+                    .field("vector")
+                    .queryVector(qv)
+                    .numCandidates(Math.max(topK * 10, 100))
+                    .filter(kbFilter));
+
             SearchResponse<Map> resp = esClient.search(s -> s
                             .index(esConfig.getIndexName())
                             .size(topK)
-                            .query(q -> q.knn(k -> k
-                                    .field("vector")
-                                    .queryVector(qv)
-                                    .k(topK)
-                                    .numCandidates(Math.max(topK * 10, 100))
-                                    .filter(f -> f.term(tm -> tm.field("kbId").value(String.valueOf(kbId)))))),
+                            .query(q -> q.knn(knn)),
                     Map.class);
 
             for (Hit<Map> hit : resp.hits().hits()) {
@@ -282,7 +291,7 @@ public class RagVectorServiceImpl implements RagVectorService {
      * TODO: 需要按原实现校对——原实现是否设置了 {@code parameters.instruction}、
      *       是否有本地向量缓存（当前每次检索都重算，无缓存）。
      */
-    private List<Double> embed(String text) throws Exception {
+    private List<Float> embed(String text) throws Exception {
         Map<String, Object> body = new HashMap<>();
         body.put("model", EMBED_MODEL);
         body.put("input", List.of(text == null ? "" : text));
@@ -307,9 +316,9 @@ public class RagVectorServiceImpl implements RagVectorService {
         if (embeddings instanceof List<?> list && !list.isEmpty()) {
             Object first = list.get(0);
             if (first instanceof Map<?, ?> m && m.get("embedding") instanceof List<?> vec) {
-                List<Double> out = new ArrayList<>(vec.size());
+                List<Float> out = new ArrayList<>(vec.size());
                 for (Object v : vec) {
-                    out.add(((Number) v).doubleValue());
+                    out.add(((Number) v).floatValue());
                 }
                 return out;
             }
@@ -317,11 +326,11 @@ public class RagVectorServiceImpl implements RagVectorService {
         throw new IllegalStateException("DashScope embedding 响应结构异常: " + resp);
     }
 
-    private String resolveUploadDir() {
+    private Path resolveUploadDir() {
         String dir = System.getProperty("rag.file.upload-dir");
         if (dir == null || dir.isBlank()) {
             dir = Paths.get(System.getProperty("user.dir"), "files", "rag").toString();
         }
-        return dir.endsWith("/") || dir.endsWith("\\") ? dir : dir + "/";
+        return Paths.get(dir);
     }
 }

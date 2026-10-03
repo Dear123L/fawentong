@@ -6,6 +6,9 @@ import com.example.service.RagChatService;
 import com.example.service.RagVectorService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import reactor.core.publisher.Flux;
@@ -80,11 +83,11 @@ public class RagChatServiceImpl implements RagChatService {
                     Map.of("role", "user", "content", prompt))));
 
             HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
+            headers.setContentType(MediaType.APPLICATION_JSON);
             headers.setBearerAuth(dashscopeApiKey);
             Map<?, ?> resp = new RestTemplate().postForObject(
                     "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation",
-                    new org.springframework.http.HttpEntity<>(body, headers), Map.class);
+                    new HttpEntity<>(body, headers), Map.class);
 
             Map<?, ?> output = resp == null ? null : (Map<?, ?>) resp.get("output");
             if (output != null) {
