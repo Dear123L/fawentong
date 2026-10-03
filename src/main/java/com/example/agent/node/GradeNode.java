@@ -72,6 +72,8 @@ public class GradeNode {
                 }
                 log.info("评分完成: 召回 {} 条 → 过门 {} 条（阈值 {}）", docs.size(), gradedDocs.size(), GRADE_THRESHOLD);
                 updates.put("gradedDocs", gradedDocs);
+                // 评分门信号：供 Graph 条件边直接路由（等价于 gradedDocs 非空，落为独立布尔字段更直观）
+                updates.put("relevant", !gradedDocs.isEmpty());
             } catch (Exception e) {
                 log.error("评分节点异常: {}", e.getMessage(), e);
                 // 评分失败时不做门控：直接放行全部召回片段，避免因单点故障丢失可用依据

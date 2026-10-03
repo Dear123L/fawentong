@@ -216,11 +216,12 @@ public class RagVectorServiceImpl implements RagVectorService {
             // 同上：term 查询先抽变量，规避嵌套 lambda 的类型推断丢失
             Query kbFilter = Query.of(t -> t.term(tm -> tm.field("kbId").value(String.valueOf(kbId))));
             // ES 8.15.0 的 KnnQuery.Builder 无 k() 方法（8.15.5+ 才有），
-            // 返回条数由 search().size(topK) 控制，numCandidates 决定候选池大小
+            // 返回条数由 search().size(topK) 控制；numCandidates 固定 100，
+            // 即在约 100 个最近邻候选中按相似度取 topK
             KnnQuery knn = KnnQuery.of(k -> k
                     .field("vector")
                     .queryVector(qv)
-                    .numCandidates(Math.max(topK * 10, 100))
+                    .numCandidates(100)
                     .filter(kbFilter));
 
             SearchResponse<Map> resp = esClient.search(s -> s

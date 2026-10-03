@@ -35,6 +35,9 @@ import static org.bsc.langgraph4j.StateGraph.START;
 @RequiredArgsConstructor
 public class AgenticRagGraph {
 
+    /** 改写重试上限：评分门全灭时最多改写 2 次（即最多 3 轮检索） */
+    private static final int MAX_REWRITE_RETRY = 2;
+
     private final RetrieveNode retrieveNode;
     private final GradeNode gradeNode;
     private final RewriteNode rewriteNode;
@@ -58,25 +61,24 @@ public class AgenticRagGraph {
         graph.addEdge(START, "retrieve");
         graph.addEdge("retrieve", "grade");
 
-        // 评分门：有片段 -> generate；全灭且尚未改写过 -> rewrite；否则 -> generate（由其拒答）
+        // 评分门：有片段 -> generate；全灭且未达重试上限 -> rewrite；否则 -> generate（由其拒答）
         graph.addConditionalEdges("grade",
                 (state) -> CompletableFuture.supplyAsync(() -> {
-                    boolean hasDocs = !state.getGradedDocs().isEmpty();
-                    if (hasDocs) {
+                    if (state.isRelevant()) {
                         log.info("评分门 -> generate（过门 {} 条）", state.getGradedDocs().size());
                         return "generate";
                     }
-                    if (!state.isRewritten() && state.getRetryCount() < 1) {
-                        log.info("评分门全灭 -> rewrite（改写查询后重检一次）");
+                    if (state.getRetryCount() < MAX_REWRITE_RETRY) {
+                        log.info("评分门全灭 -> rewrite（第 {} 次改写）", state.getRetryCount() + 1);
                         return "rewrite";
                     }
-                    log.info("评分门全灭且已改写过 -> generate（将拒答）");
+                    log.info("评分门全灭且已达重试上限 {} -> generate（将拒答）", MAX_REWRITE_RETRY);
                     return "generate";
                 }),
                 Map.of("generate", "generate", "rewrite", "rewrite")
         );
 
-        // 改写后重检一次（硬编码 rewrite -> retrieve，不回到 grade 前再次改写）
+        // 改写后重检（硬编码 rewrite -> retrieve，评分门全灭时可再次回到 rewrite，直至上限）
         graph.addEdge("rewrite", "retrieve");
         graph.addEdge("generate", END);
 

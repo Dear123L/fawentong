@@ -17,11 +17,16 @@ import java.util.concurrent.CompletableFuture;
 /**
  * 查询改写节点：评分门全部未过时，把口语化提问改写成更适合 BM25 命中的法律检索式。
  *
- * <p>只执行一次（以 rewriteCount 标记），避免与外层多轮改写叠加放大语义漂移。
+ * <p>最多重试 {@value #MAX_RETRY} 次：每次改写后重新检索并再过一次评分门，
+ * 仍全灭则交由生成节点拒答。重试次数以 {@code retryCount} 累加，
+ * 由 Graph 的条件边与本节点自身双重兜底，避免无限回环。
  */
 @Slf4j
 @Component
 public class RewriteNode {
+
+    /** 改写重试上限：最多 2 次（即原始查询 + 2 轮改写，共 3 轮检索） */
+    private static final int MAX_RETRY = 2;
 
     @Value("${dashscope.api.key}")
     private String apiKey;
@@ -32,8 +37,9 @@ public class RewriteNode {
     public CompletableFuture<Map<String, Object>> execute(AgenticState state) {
         return CompletableFuture.supplyAsync(() -> {
             Map<String, Object> updates = new HashMap<>();
-            if (state.isRewritten()) {
-                log.info("查询已改写过，跳过 RewriteNode");
+            // 最多重试 MAX_RETRY 次（由 Graph 的条件边按 retryCount 兜底，此处只负责累加计数）
+            if (state.getRetryCount() >= MAX_RETRY) {
+                log.info("改写次数已达上限 {}，跳过 RewriteNode", MAX_RETRY);
                 return updates;
             }
             String original = state.getOriginalQuestion();
@@ -43,13 +49,11 @@ public class RewriteNode {
             } catch (Exception e) {
                 log.warn("查询改写失败, 沿用原查询: {}", e.getMessage());
             }
+            // 无论改写成功与否都累加计数，避免改写失败时无限回环
+            updates.put("retryCount", state.getRetryCount() + 1);
             if (rewritten != null && !rewritten.isBlank()) {
                 updates.put("currentQuery", rewritten);
-                updates.put("rewriteCount", 1);
-                log.info("查询改写: 「{}」-> 「{}」", original, rewritten);
-            } else {
-                // 兜底：即使改写失败也标记一次，避免死循环反复调用改写
-                updates.put("rewriteCount", 1);
+                log.info("查询改写(第{}次): 「{}」-> 「{}」", state.getRetryCount() + 1, original, rewritten);
             }
             return updates;
         });

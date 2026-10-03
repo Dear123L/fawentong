@@ -22,8 +22,13 @@ import java.util.concurrent.CompletableFuture;
 @RequiredArgsConstructor
 public class RetrieveNode {
 
-    /** 单次召回条数：召回量需大于最终 topK，给后续评分门留筛选空间 */
-    private static final int RECALL_K = 8;
+    /**
+     * 最终期望条数 topK。召回量按 {@code recallSize = max(topK * 2, 50)} 放大：
+     * 召回池需显著大于最终产出量，给 GradeNode 的评分门留足筛选空间；
+     * 50 为经验兜底，避免 topK 很小时召回过窄而漏掉可用条款。
+     */
+    private static final int TOP_K = 8;
+    private static final int MIN_RECALL = 50;
 
     private final RagVectorService ragVectorService;
 
@@ -35,11 +40,12 @@ public class RetrieveNode {
                 return updates;
             }
             try {
+                int recallSize = Math.max(TOP_K * 2, MIN_RECALL);
                 List<Map<String, Object>> docs = ragVectorService.hybridSearch(
-                        state.getKbId(), state.getCurrentQuery(), RECALL_K);
+                        state.getKbId(), state.getCurrentQuery(), recallSize);
                 updates.put("retrievedDocs", docs);
-                log.info("检索完成: query={} 召回 {} 条", state.getCurrentQuery(),
-                        docs == null ? 0 : docs.size());
+                log.info("检索完成: query={} 召回 {}/{} 条", state.getCurrentQuery(),
+                        docs == null ? 0 : docs.size(), recallSize);
             } catch (Exception e) {
                 log.error("检索失败: {}", e.getMessage(), e);
                 updates.put("retrievedDocs", List.of());

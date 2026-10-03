@@ -17,7 +17,7 @@ import java.util.Map;
  * <ul>
  *   <li>控制字段：question / originalQuestion / currentQuery / kbId / retryCount / needRetrieval</li>
  *   <li>中间产物：retrievedDocs / gradedDocs / ragAnswer / finalAnswer</li>
- *   <li>控制标志：rewriteCount（是否已改写过查询）</li>
+ *   <li>控制标志：relevant（评分门是否有相关片段）、retryCount（已改写次数）</li>
  * </ul>
  */
 public class AgenticState extends AgentState {
@@ -65,9 +65,23 @@ public class AgenticState extends AgentState {
         return !Boolean.FALSE.equals(data().get("needRetrieval"));
     }
 
-    /** 是否已改写过查询（改写节点只应执行一次，避免与外层 rewrite 冲突） */
-    public boolean isRewritten() {
-        return data().get("rewriteCount") != null;
+    /**
+     * 评分门判定：本次检索是否存在相关片段。
+     *
+     * <p>与 {@code gradedDocs} 非空等价，落为独立布尔字段便于图路由直接读取
+     * （LangGraph4j 条件边需要明确的路由信号）。
+     */
+    public boolean isRelevant() {
+        Object v = data().get("relevant");
+        if (v != null) {
+            return Boolean.parseBoolean(String.valueOf(v));
+        }
+        return !getGradedDocs().isEmpty();
+    }
+
+    /** 已改写次数（对应 {@code retryCount}，由 RewriteNode 累加） */
+    public int getRewriteCount() {
+        return getRetryCount();
     }
 
     @SuppressWarnings("unchecked")
