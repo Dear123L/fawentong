@@ -99,6 +99,9 @@ rag_agent/
 resume-output/
 /*.md
 !README.md
+# 放行项目文档目录(面向仓库读者)
+!docs/
+!docs/**
 *_report.md
 *_报告.md
 代码地图.md
@@ -125,6 +128,8 @@ carryout.txt
 demotoken.txt
 
 # 6) 备份目录
+本地归档_报告/
+_本地归档_报告/
 .refactor_backup/
 文件汇总/
 _backup/

@@ -1,0 +1,265 @@
+# 法问通 · 合同 RAG 问答后端
+
+> 基于多智能体状态图的合同条款问答服务：4 节点外层编排 + 4 节点内层检索子图，
+> 检索走 BM25 与向量双路召回经加权 RRF 融合，记忆层用 Redis 做短期滑窗与跨会话用户画像。
+
+一个面向中国大陆合同场景的法律问答后端。用户用口语化提问（如"100万逾期30天违约金多少"），
+系统判定问题是否在服务范围内，检索法规库拿到条款依据，按需触发违约金/利息计算，
+最后成文作答并标注引用；范围外的问题直接拒答并说明服务边界。
+
+---
+
+## 技术栈
+
+| 层面 | 选型 | 版本 |
+|---|---|---|
+| 语言 / 框架 | Java + Spring Boot | 17 / 3.3.4 |
+| Agent 编排 | LangGraph4j（状态图） | 1.6.0-rc4 |
+| 检索引擎 | Elasticsearch（BM25 + dense_vector KNN） | 8.15.x |
+| 向量模型 | DashScope `text-embedding-v3` | 1024 维 |
+| LLM | DashScope（DeepSeek-V3 主模型 / Qwen-Flash 轻量模型） | — |
+| 记忆 | Redis（短期滑窗 + 结构化键 + 长期画像 Hash） | — |
+| 持久化 | MySQL + MyBatis-Plus | 8.0 |
+| 鉴权 | JWT（jjwt） | 0.11.5 |
+| 文档处理 | Apache POI（docx） | 5.3.0 |
+
+---
+
+## 架构
+
+### 请求链路
+
+```
+HTTP 请求
+  │
+  ▼
+RagController  /api/rag/chatAgent/multi
+  │  resolveUserId：token → UserContext，缺失回落 1L
+  ▼
+MultiAgentRagServiceImpl        编排层：读历史 → 跑图 → 回写记忆
+  │
+  ▼
+外层状态图（LangGraph4j）
+  │
+  ├─ ScopeCheck   范围闸：硬拒域外 / 强放域内 / LLM 兜底
+  │               + 意图识别（retrieve / both / calculate）
+  │                 ├─ 域外 ─────────────→ END（拒答，省掉后续检索与生成）
+  │                 └─ 域内 ↓
+  ├─ Retriever    调内层检索子图 → 得到条款依据
+  │               按意图门控触发计算（违约金 / 借贷利息）
+  │                 │
+  │                 ▼
+  │        ┌──────── 内层检索子图（AgenticRagGraph）────────┐
+  │        │  retrieve  BM25 ∥ KNN 召回 → 加权 RRF 融合      │
+  │        │     ↓                                          │
+  │        │  grade      LLM 逐条打分「相关|分数」，阈值 0.6  │
+  │        │     ├─ 过门 ─────────────────────→ generate     │
+  │        │     └─ 全灭 → rewrite 改写查询 → retrieve      │
+  │        │              （最多改写 2 次，仍全灭则拒答）    │
+  │        └────────────────────────────────────────────────┘
+  │                 ↓
+  ├─ Answer      确定性模板拼接：条款锚定 + 检索成文 + 引用 + 计算结论
+  │              （不额外调 LLM，结果可复现）
+  │                 ↓
+  └─ Critic      评审充分性：启发式 + LLM
+                ├─ 不足且未达上限 → 回到 Retriever（重规划重检索）
+                └─ 充足 → END
+  │
+  ▼
+返回答案（含引用条款号）
+```
+
+### 为什么是两层图
+
+外层管**该不该答、答得对不对**（范围、计算、评审），内层管**答得有没有依据**（检索、评分、改写）。
+分开的好处是检索可以独立复用与单测——外层 `Retriever` 调内层时只关心"拿到条款没有"，
+不关心检索是几路召回、评分阈值多少。
+
+### 记忆层
+
+| 存储 | 键 | 内容 | TTL |
+|---|---|---|---|
+| 会话历史 | `memory:history:{sid}` | 最近 10 轮原文，超窗压成滚动摘要 | 7 天 |
+| 约束事实 | `memory:calcparams:{sid}` 等 | 本金 / 天数 / 利率 / calcType / 条款锚点 | 7 天 |
+| 用户画像 | `user:profile:{uid}` | 合同类型 / 偏好 / 常问 / 纠错 | 30 天 |
+
+约束事实走**独立键**而非塞进历史文本——历史会被摘要压缩，数值不能跟着一起丢。
+
+---
+
+## 快速开始
+
+### 环境依赖
+
+- JDK 17+
+- MySQL 8.0（`fawentong` 库）
+- Redis 6+
+- Elasticsearch 8.15.x（已建 `rag_knowledge_base` 索引，约 2186 条法规）
+- DashScope API Key（需能访问 `text-embedding-v3` 与对话模型）
+
+### 启动
+
+```bash
+# 1. 准备配置（仓库里只有占位符模板）
+cp src/main/resources/application-local.yml.example \
+   src/main/resources/application-local.yml
+
+# 2. 填入真实值
+#    - dashscope.api.key        LLM 与 embedding
+#    - jwt.secret               至少 32 字节的随机串
+#    - spring.datasource.*      MySQL 连接
+#    - rag.file.upload-dir      文档落盘目录
+
+# 3. 编译运行
+mvn clean package -DskipTests
+java -jar target/fawentong-0.0.1-SNAPSHOT.jar
+```
+
+服务默认监听 8080，可用 `--server.port=8082` 覆盖。
+
+### 知识库数据
+
+`rag_knowledge_base` 索引存放切好的法规片段，每条含 `content` / `kbId` / `docId` /
+`clauseId`（如 `民法典-第585条`，即 ES 的 `_id`）。索引不存在时应用启动会自动创建。
+
+---
+
+## API
+
+统一前缀 `/api/rag`。除 `/api/memory/**` 需强制 JWT 外，其余接口在携带合法 token 时走
+`UserContext` 解析真实用户，缺失时回落 `userId=1`（便于本地调试与评测）。
+
+### 多智能体问答
+
+| 方法 | 路径 | 参数 | 说明 |
+|---|---|---|---|
+| GET | `/chatAgent/multi` | `kbId` `sessionId` `question` | 生产端点，返回答案 |
+| GET | `/chatAgent/multiDebug` | 同上 | 额外返回 `meta`，供量化评测消费 |
+
+`multiDebug` 的 `meta` 含 5 个字段：
+
+| 字段 | 含义 |
+|---|---|
+| `retrieved` | 命中的条款片段（含 `clauseId` 与融合分数） |
+| `extracted` | 从问题中抽出的计算参数（本金 / 天数 / 日利率‰） |
+| `computed_penalty` | 计算结果金额 |
+| `rejected` | 是否因范围或检索失败而拒答 |
+| `replanned` | Critic 是否触发了重规划重检索 |
+
+### 单图检索与单轮问答
+
+| 方法 | 路径 | 参数 | 说明 |
+|---|---|---|---|
+| GET | `/chatAgent/stream` | `kbId` `sessionId` `question` | 单图 AgenticRAG，不做范围判定与评审 |
+| GET | `/chat/stream` | `kbId` `sessionId` `question` | 单轮 RAG，SSE 流式 |
+| GET | `/chat/history` | `sessionId` | 会话历史 |
+
+### 知识库管理
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/kb/create` | 新建知识库 |
+| GET | `/kb/list` | 列出可见知识库（自己的 + 公共） |
+| POST | `/document/upload` | 上传文档（解析 → 切片 → 向量化 → 入库） |
+
+### 示例
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8082/api/rag/chatAgent/multiDebug?kbId=1&sessionId=s1&question=100万逾期30天违约金多少"
+```
+
+```json
+{
+  "code": 200,
+  "data": "……（成文答案，含 [1][2] 形式引用）",
+  "meta": {
+    "retrieved": [{ "clauseId": "民法典-第585条", "score": 0.0325 }],
+    "extracted": { "principal": 1000000.0, "days": 30, "daily_rate_per_mille": 0.5 },
+    "computed_penalty": 15000.0,
+    "rejected": false,
+    "replanned": true
+  }
+}
+```
+
+---
+
+## 核心设计决策
+
+### 1. 范围判定用规则快路径 + LLM 兜底，而不是全交给模型
+
+`ScopeCheck` 先走规则：命中硬拒词表直接拒答，命中锚点词（如"合同"）直接放行，
+只有规则不确定时才调 LLM 分类。原因是范围判定的错误代价不对称——把域内问题误拒
+比误放代价大得多，而全交给 LLM 又会为每个请求多付一次模型调用的延迟。
+规则表能覆盖绝大多数问法，兜底只处理长尾。
+
+### 2. 检索用加权 RRF，KNN 权重高于 BM25
+
+两路召回各自有盲区：BM25 擅长条款编号与专有名词（"第585条"这种字面命中），
+KNN 擅长同义表述（"逾期违约金" vs "迟延履行违约金"）。融合用 RRF 而非归一化分数相加——
+两路分数量纲不同，相加需要额外校准，RRF 只用排名，对量纲免疫。
+
+关键在权重：KNN 1.0 / BM25 0.3。BM25 权重压低是因为它会带回大量"字面沾边但语义无关"的
+噪声片段，这些噪声在等权融合里会稀释真正的语义命中。平滑常数 k 取 10 而非默认 60，
+因为 k=60 会把各列表内部的排名差异压平，接近 KNN-only 的上限。
+
+`rag.hybrid.knn.enabled` 留了开关，关掉即退化为纯 BM25，便于对比评测两种配置。
+
+### 3. 评分门用轻量模型，阈值 0.6，改写重试有上限
+
+检索召回后不直接生成，而是让 LLM 逐条判「相关|分数」，只留 ≥ 0.6 的片段。
+这一步是防"检索到了但答非所问"——召回片段里常混着仅关键词重合的条款。
+打分用 Qwen-Flash 而非主模型，因为这是短输出高频调用，成本敏感。
+
+全灭时改写查询重检，但**上限 2 次**。不设上限会陷入"改写→召回→评分全灭→再改写"的空转，
+既烧 token 又拖延迟；改写本身也可能抛错，所以重试计数在改写失败时也要累加。
+
+### 4. Answer 用确定性模板拼接，不调 LLM
+
+检索节点已经把依据写成文（内层 generate 产出），如果 Answer 再调一次 LLM 做综合，
+等于同一件事做两遍。所以 Answer 走模板拼接：上轮条款锚定 + 检索成文 + 引用依据 + 计算结论，
+四段拼起来。好处是结果可复现、可审计，且省一次模型调用——法律问答里"同样输入得到同样答案"
+本身是需求。
+
+### 5. 约束事实用独立 Redis 键，与自由文本历史隔离
+
+短期记忆里，文本历史会被滑窗截断、超窗后还会被摘要压缩。但本金、天数、利率、已锚定的
+clauseId 这些是**硬约束**，走摘要会丢精度——第二轮用户只说"改成 45 天"，如果本金在摘要里
+被压掉了就算不出数。所以这些字段存在独立键里，跨轮继承走 `getCalcParams` 而非读历史。
+
+长期用户画像（合同类型/偏好）是**软提示**，召回后软注入 prompt，绝不覆盖短期状态——
+软提示猜错了不该让数值计算跟着错。
+
+### 6. 工具调用手写 ReAct 循环，不依赖 SDK 的 function calling
+
+DashScope Java SDK 的 function calling 支持不稳定，所以工具循环是自己实现的：
+解析模型输出的 JSON → 调 `ToolExecutor` → 把结果回填 → 再让模型判断下一步。
+代价是要自己处理解析容错，收益是与 SDK 版本解耦、可控、可调试——工具入参非法时
+返回提示让模型重试，而不是抛异常打断链路。
+
+---
+
+## 项目结构
+
+```
+src/main/java/com/example/
+├── agent/
+│   ├── multi/        外层 4 节点：ScopeCheck / Retriever / Answer / Critic + ReAct 工具循环
+│   ├── graph/        内层检索子图 AgenticRagGraph
+│   ├── node/         内层 4 节点：Retrieve / Grade / Rewrite / Generate
+│   └── state/        状态对象（MultiAgentState / AgenticState）
+├── calc/             计算注册表与实现（违约金 / 借贷利息）
+├── config/           Bean 配置（ES / Redis / Web / 文件属性）
+├── controller/       HTTP 入口
+├── security/         JWT 过滤器
+├── service/          业务接口
+│   └── impl/         实现
+├── mapper/           MyBatis 映射
+├── entity/ / dto/ / vo/ / enums/
+└── util/             工具类
+```
+
+## 许可
+
+仅供学习与交流使用。

@@ -15,9 +15,11 @@ import java.util.List;
 /**
  * 文档文本抽取实现。
  *
- * <p>支持 txt/md（直接按 UTF-8 读）与 docx（POI XWPF 抽取正文）。
- * TODO: 需要按原实现校对——原实现可能还支持 pdf（PDFBox）/xlsx，当前 pom 未引入 PDFBox，
- *      故 pdf 走降级分支返回空文本。若原实现支持 pdf，需补依赖与分支。
+ * <p>支持 txt/md/csv（按 UTF-8 直读）与 docx（POI XWPF 抽正文）。
+ *
+ * <p>与 {@link com.example.service.DocumentConverterService} 职责不同：那条链路用
+ * PDFBox + POI 把 pdf/doc 转成<b>图片</b>（供合同审查、模板预览），不做文本抽取。
+ * 若要支持 pdf 文本抽取，可复用 PDFBox 的 PDFTextStripper。
  */
 @Slf4j
 @Service
