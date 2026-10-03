@@ -90,6 +90,9 @@ __pycache__/
 !src/test/**/*.py
 rag_agent/
 
+# Office 临时文件(Word/Lock 文件)
+~$*
+
 # 2) 评测数据与产物（测试集/结果/向量/基线，大文件且含业务数据）
 *.json
 !package.json
