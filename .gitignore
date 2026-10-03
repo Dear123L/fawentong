@@ -76,3 +76,58 @@ __pycache__/
 
 # AI 工作记忆(本地私有, 不应提交)
 .workbuddy/
+
+### ===== 仓库定位：给人看的开源项目 =====
+# 本仓库只保留「Java 后端源码 + 必要配置 + 项目文档」。
+# 以下均为本地研发过程的产物，不应出现在公开仓库中。
+
+# 1) 评测脚本（Python 评测工具链，本地运行用）
+*.py
+!src/test/**/*.py
+rag_agent/
+
+# 2) 评测数据与产物（测试集/结果/向量/基线，大文件且含业务数据）
+*.json
+!package.json
+!src/main/resources/**/*.json
+
+# 3) 本地产物与内部报告（非项目文档，不入库）
+resume-output/
+*_report.md
+*_报告.md
+代码地图.md
+安全排查报告.md
+系统全景说明书.md
+*p0_report.md
+*p1*.md
+*p2*.md
+
+# 4) 运行日志与错误输出（含内网地址、请求体、可能的 token）
+*.log
+*.log.*
+*.err
+logs/
+
+# 5) 临时输出与中间文件
+*.txt
+*.out
+*.rdb
+*.tmp
+*.bak
+t.py
+carryout.txt
+demotoken.txt
+
+# 6) 备份目录
+.refactor_backup/
+文件汇总/
+_backup/
+*.original
+
+# 7) 评测题集（业务数据，非代码资产）
+contract_qa_testset*.json
+clause_id_map.json
+
+# 8) 本地数据备份目录
+_数据备份/
+
