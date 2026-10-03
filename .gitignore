@@ -81,8 +81,12 @@ __pycache__/
 # 本仓库只保留「Java 后端源码 + 必要配置 + 项目文档」。
 # 以下均为本地研发过程的产物，不应出现在公开仓库中。
 
-# 1) 评测脚本（Python 评测工具链，本地运行用）
+# 1) 评测脚本（Python/JS 评测工具链，本地运行用）
 *.py
+*.js
+*.sh
+*.bat
+*.hb
 !src/test/**/*.py
 rag_agent/
 
@@ -93,6 +97,8 @@ rag_agent/
 
 # 3) 本地产物与内部报告（非项目文档，不入库）
 resume-output/
+/*.md
+!README.md
 *_report.md
 *_报告.md
 代码地图.md
