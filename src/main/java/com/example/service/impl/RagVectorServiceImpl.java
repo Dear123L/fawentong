@@ -106,7 +106,6 @@ public class RagVectorServiceImpl implements RagVectorService {
         doc.setUserId(userId);
         doc.setFileName(file.getOriginalFilename());
         doc.setFileType(file.getContentType());
-        doc.setFileSize(file.getSize());
         doc.setStatus("pending");
         documentMapper.insert(doc);
 
@@ -123,7 +122,6 @@ public class RagVectorServiceImpl implements RagVectorService {
 
             String text = extractor.extractText(file);
             List<String> chunks = extractor.splitText(text, esConfig.getChunkSize(), esConfig.getChunkOverlap());
-            doc.setContentLength(text == null ? 0 : text.length());
             doc.setChunkCount(chunks.size());
             doc.setStatus("done");
             documentMapper.updateParseResult(doc);

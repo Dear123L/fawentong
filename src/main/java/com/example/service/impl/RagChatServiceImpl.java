@@ -110,21 +110,13 @@ public class RagChatServiceImpl implements RagChatService {
     private void saveHistory(Long userId, Long kbId, String sessionId, String question,
                              String answer, List<Map<String, Object>> docs) {
         try {
-            List<String> clauseIds = new ArrayList<>();
-            for (Map<String, Object> d : docs) {
-                Object cid = d.get("clauseId");
-                if (cid != null) {
-                    clauseIds.add(String.valueOf(cid));
-                }
-            }
             RagConversation conv = new RagConversation();
             conv.setSessionId(sessionId);
             conv.setUserId(userId);
             conv.setKbId(kbId);
-            conv.setTurnIndex(conversationMapper.maxTurnIndex(sessionId) + 1);
+            
             conv.setQuestion(question);
             conv.setAnswer(answer);
-            conv.setClauseIds(String.join(",", clauseIds));
             conversationMapper.insert(conv);
         } catch (Exception e) {
             // 历史落库失败不阻断主问答链路
