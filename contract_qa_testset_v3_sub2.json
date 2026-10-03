@@ -1,0 +1,116 @@
+{
+  "meta": {
+    "knowledge_base_source": "rag_agent/multi_agent_rag.py -> CORPUS（6 条演示条款）",
+    "clause_id_mapping": {
+      "C1": "民法典-第502条（合同生效）",
+      "C2": "付款期限=民法典-第626条；违约金=民法典-第585条",
+      "C3": "民法典-第590条（不可抗力）",
+      "C4": "民法典-第501条（保密义务）",
+      "C5": "民法典-第586条（定金上限20%）+ 民法典-第587条（定金罚则）",
+      "C6": "民法典-第577条（违约责任）"
+    },
+    "penalty_formula": "penalty = principal * (daily_rate_per_mille / 1000) * days",
+    "rate_note": "日万分之五 = 0.5‰，故 daily_rate_per_mille=0.5；注意 multi_agent_rag.py:131 注释写'日万分之五填5'会按本公式得到10倍错误值",
+    "counts": {
+      "retrieve": 13,
+      "calculate": 9,
+      "both": 8,
+      "total": 85,
+      "out_of_scope": 8
+    },
+    "edge_cases": {
+      "principal_0": "T015",
+      "days_0": "T016",
+      "abnormal_high_rate": "T017",
+      "clause_not_stipulated": "T024"
+    },
+    "version": "v2 (re-anchored to real 民法典 clause ids; C1-C6 synthetic removed)",
+    "v3_draft": {
+      "generated_by": "kb_seed_v3.py (DashScope qwen-flash)",
+      "source": "ES rag_knowledge_base (2186 条法典法条)",
+      "leakage_guard": "已排除 v2 用过的 9 个 canonicalId",
+      "counts": {
+        "single": 17,
+        "multi": 15,
+        "compare": 7,
+        "oos": 8,
+        "total_new": 47
+      },
+      "note": "草稿，待人工核验 gold 与答案后再合入 v2 -> v3。"
+    },
+    "v3_info": {
+      "source_draft": "testset_v3_draft.json",
+      "total": 47,
+      "v2_status": "已退役为独立回归基线，不混入 v3",
+      "new_fields_added": [
+        "difficulty",
+        "gold_clause_type",
+        "query_pattern"
+      ],
+      "eval_scorer_compatibility": "eval_scorer 仅读取 id/question/expected_clause_ids/calculation_params/expected_answer/type，新增字段被忽略，向后兼容",
+      "gold_clause_type_dist": {
+        "C1": 5,
+        "C2": 14,
+        "C3": 4,
+        "C4": 3,
+        "C5": 9,
+        "C6": 4,
+        "OOS": 8
+      },
+      "difficulty_dist": {
+        "L1": 12,
+        "L2": 18,
+        "L3": 15,
+        "L4": 2
+      },
+      "query_pattern_dist": {
+        "single": 17,
+        "multi": 15,
+        "compare": 7,
+        "oos": 8
+      },
+      "calc_count": 5,
+      "oos_count": 8
+    }
+  },
+  "data": [
+    {
+      "id": "T084",
+      "type": "both",
+      "question": "我付了10万定金买车位，卖家反悔不卖了，按定金罚则应退我多少？合同还约定逾期交房日万分之五违约金、房款200万、逾期30天，逾期违约金是多少？这两条能一起主张吗？",
+      "expected_clause_ids": [
+        "民法典-第588条",
+        "民法典-第584条"
+      ],
+      "calculation_params": {
+        "principal": 2000000,
+        "daily_rate_per_mille": 0.5,
+        "days": 30,
+        "expected_penalty": 30000.0
+      },
+      "expected_answer": "定金罚则：收受定金一方不履行的，应双倍返还 = 10万×2 = 20万（民法典-第588条）。逾期交房违约金 = 2000000 × (0.5/1000) × 30 = 30000 元（依约定）。依据 民法典-第588条，定金与违约金只能择一适用，不能并用。",
+      "difficulty": "L3",
+      "gold_clause_type": "C5",
+      "query_pattern": "multi"
+    },
+    {
+      "id": "T085",
+      "type": "both",
+      "question": "房屋买卖标的额500万，我付了120万定金，法律允许的最高定金是多少？同时合同约定逾期付款日万分之五、欠款300万逾期10天的违约金，金额是多少？",
+      "expected_clause_ids": [
+        "民法典-第588条",
+        "民法典-第584条"
+      ],
+      "calculation_params": {
+        "principal": 3000000,
+        "daily_rate_per_mille": 0.5,
+        "days": 10,
+        "expected_penalty": 15000.0
+      },
+      "expected_answer": "定金上限 = 主合同标的额 × 20% = 500万 × 20% = 100万，超出20万部分无效（民法典-第588条 定金条款）。逾期违约金 = 3000000 × (0.5/1000) × 10 = 15000 元（依约定）。定金与违约金择一适用。",
+      "difficulty": "L3",
+      "gold_clause_type": "C5",
+      "query_pattern": "multi"
+    }
+  ]
+}

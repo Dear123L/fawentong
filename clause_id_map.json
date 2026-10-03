@@ -1,0 +1,4 @@
+{
+  "_comment": "方案二（映射表）：ES 文档 _id -> 测试集条款编号 C1-C6。首次调用 /chatAgent/multiDebug 后，从 meta.retrieved[].clauseId 读取真实 ES _id，再按内容对照 6 条 CORPUS 填写：C1=合同生效/有效期, C2=付款期限与逾期违约金, C3=不可抗力, C4=保密条款, C5=定金上限, C6=违约一般责任。若 ES docId 本身已是 C1..C6，则留空 {}（身份映射）。评测脚本读取本文件把 retrieved 的 clauseId 译为 Cx 后再算 HR/MRR。",
+  "map": {}
+}

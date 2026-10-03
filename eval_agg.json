@@ -1,0 +1,232 @@
+使用真实系统输出： results.json
+{
+  "retrieval": {
+    "subset_size": 25,
+    "HR@1": 0.96,
+    "HR@3": 0.96,
+    "HR@5": 0.96,
+    "MRR": 0.96,
+    "rows": [
+      {
+        "id": "T001",
+        "rank": 1,
+        "hit@5": true
+      },
+      {
+        "id": "T002",
+        "rank": 1,
+        "hit@5": true
+      },
+      {
+        "id": "T003",
+        "rank": 1,
+        "hit@5": true
+      },
+      {
+        "id": "T004",
+        "rank": 1,
+        "hit@5": true
+      },
+      {
+        "id": "T005",
+        "rank": 1,
+        "hit@5": true
+      },
+      {
+        "id": "T006",
+        "rank": 1,
+        "hit@5": true
+      },
+      {
+        "id": "T007",
+        "rank": 1,
+        "hit@5": true
+      },
+      {
+        "id": "T008",
+        "rank": 1,
+        "hit@5": true
+      },
+      {
+        "id": "T009",
+        "rank": 1,
+        "hit@5": true
+      },
+      {
+        "id": "T010",
+        "rank": 1,
+        "hit@5": true
+      },
+      {
+        "id": "T011",
+        "rank": 1,
+        "hit@5": true
+      },
+      {
+        "id": "T012",
+        "rank": 1,
+        "hit@5": true
+      },
+      {
+        "id": "T013",
+        "rank": 1,
+        "hit@5": true
+      },
+      {
+        "id": "T014",
+        "rank": 1,
+        "hit@5": true
+      },
+      {
+        "id": "T018",
+        "rank": 1,
+        "hit@5": true
+      },
+      {
+        "id": "T019",
+        "rank": null,
+        "hit@5": false
+      },
+      {
+        "id": "T021",
+        "rank": 1,
+        "hit@5": true
+      },
+      {
+        "id": "T022",
+        "rank": 1,
+        "hit@5": true
+      },
+      {
+        "id": "T023",
+        "rank": 1,
+        "hit@5": true
+      },
+      {
+        "id": "T025",
+        "rank": 1,
+        "hit@5": true
+      },
+      {
+        "id": "T026",
+        "rank": 1,
+        "hit@5": true
+      },
+      {
+        "id": "T027",
+        "rank": 1,
+        "hit@5": true
+      },
+      {
+        "id": "T028",
+        "rank": 1,
+        "hit@5": true
+      },
+      {
+        "id": "T029",
+        "rank": 1,
+        "hit@5": true
+      },
+      {
+        "id": "T030",
+        "rank": 1,
+        "hit@5": true
+      }
+    ]
+  },
+  "calculation": {
+    "field_acc": {
+      "principal": 0.8824,
+      "days": 0.8824,
+      "rate": 0.1765
+    },
+    "overall_param_acc": 0.6471,
+    "amount_acc": 0.2353,
+    "amount_failures": [
+      {
+        "id": "T013",
+        "computed": 150000.0,
+        "expected": 15000.0
+      },
+      {
+        "id": "T016",
+        "computed": null,
+        "expected": 0.0
+      },
+      {
+        "id": "T018",
+        "computed": 450000.0,
+        "expected": 45000.0
+      },
+      {
+        "id": "T019",
+        "computed": 2800.0,
+        "expected": 280.0
+      },
+      {
+        "id": "T021",
+        "computed": 450000.0,
+        "expected": 45000.0
+      },
+      {
+        "id": "T022",
+        "computed": 30000.0,
+        "expected": 15000.0
+      },
+      {
+        "id": "T023",
+        "computed": 10000.0,
+        "expected": 5000.0
+      },
+      {
+        "id": "T025",
+        "computed": 100000.0,
+        "expected": 10000.0
+      },
+      {
+        "id": "T026",
+        "computed": 2700000.0,
+        "expected": 270000.0
+      },
+      {
+        "id": "T027",
+        "computed": 2800.0,
+        "expected": 280.0
+      },
+      {
+        "id": "T028",
+        "computed": 150.0,
+        "expected": 75.0
+      },
+      {
+        "id": "T029",
+        "computed": 450000.0,
+        "expected": 45000.0
+      },
+      {
+        "id": "T030",
+        "computed": null,
+        "expected": 0.0
+      }
+    ]
+  },
+  "e2e": {
+    "confusion": {
+      "TP": 4,
+      "FN": 5,
+      "FP": 0,
+      "TN": 29
+    },
+    "reject_accuracy": 0.8684,
+    "reject_precision": 1.0,
+    "reject_recall": 0.4444,
+    "replan_rate": 0.0
+  },
+  "generation": {
+    "faithfulness_mean": 4.605,
+    "faithfulness_passrate": 0.8684,
+    "answer_relevance_mean": 4.474,
+    "answer_relevance_passrate": 0.8684,
+    "note": "评委分数需由 LLM 评委对每条打 faithful_score / relevant_score 后填入 results.json"
+  }
+}

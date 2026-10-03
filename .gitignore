@@ -31,3 +31,48 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### ===== 安全：敏感配置与密钥（勿提交）=====
+# 含明文密钥的运行配置（保留本地文件，仅脱离 git 追踪）
+src/main/resources/application.yml
+src/main/resources/application-local.yml
+src/main/resources/application-*.yml
+# 放行占位符模板（仅含变量名，无真实值，供他人克隆后参考）
+!src/main/resources/application-local.yml.example
+!src/main/resources/*.yml.example
+.env
+.env.*
+
+# 评测产物 / 向量 / 基线（大文件 + 含业务数据）
+results*.json
+*_result.json
+eval_out*.json
+vectors_all.json
+baselines/
+
+# 运行日志（可能含内网地址、token、请求体）
+*.log
+logs/
+app_*.log
+backend_*.log
+
+# 测试/运维脚本（含硬编码 JWT 签名密钥与 API Key）
+memory_eval.py
+user_longterm_eval.py
+long_session_test.py
+mint_jwt.js
+backfill_all.py
+backfill_vectors.py
+diag_retrieval.py
+
+# 临时/备份目录
+.refactor_backup/
+文件汇总/
+
+# 编译与缓存
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# AI 工作记忆(本地私有, 不应提交)
+.workbuddy/

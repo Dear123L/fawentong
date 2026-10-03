@@ -1,0 +1,9 @@
+=== G3: Q1(100万/万分之五/30天) -> Q2(改成60天呢) ===
+  Q1 computed=15000.0 expect 15000
+  Q2 computed=30000.0 expect 300000 (inherit 100万/0.5‰)
+  Q2 rejected=False  -> FAIL
+=== G4: Q1(50万/万分之五/20天) -> Q2(本金改200万) ===
+  Q1 computed=5000.0 expect 5000
+  Q2 computed=20000.0 expect 20000 (inherit 0.5‰/20天)
+  Q2 rejected=False  -> PASS
+rc=0

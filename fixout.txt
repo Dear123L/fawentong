@@ -1,0 +1,23 @@
+=== 1) 此前系统性错误题 ===
+  [OK] T017 本金100万 日利率5%(=50‰) 10天: computed=500000.0 expected=500000.0
+  [OK] T022 100万货款拖30天(无显式利率): computed=15000.0 expected=15000.0
+  [OK] T023 50万货款拖20天(无显式利率): computed=5000.0 expected=5000.0
+  [OK] T029 150万逾期60天: computed=45000.0 expected=45000.0
+  [OK] T030 不可抗力100万30天: computed=0.0 expected=0.0
+  [OK] T015 本金0: computed=0.0 expected=0.0
+  [OK] T016 一天都没逾期: computed=0.0 expected=0.0
+  [OK] T020 日千分之一30万20天: computed=6000.0 expected=6000.0
+
+=== 2) 跑间方差题 连跑3次看是否完全一致 ===
+  [STABLE] T026: [270000.0, 270000.0, 270000.0] expected=270000.0
+  [STABLE] T027: [280.0, 280.0, 280.0] expected=280.0
+  [STABLE] T028: [75.0, 75.0, 75.0] expected=75.0
+
+=== 3) 跨轮携带 G3：Q1(100万/万分之五/30天) -> Q2(改成60天呢) ===
+  Q1 computed=15000.0 (expect 15000)
+  Q2 computed=0.0 (expect 300000 via carry)
+  Q2 rejected=False
+
+=== 4) 跨轮携带 G4：Q1(50万/万分之五/20天) -> Q2(本金改200万) ===
+  Q1 computed=5000.0 (expect 5000)
+  Q2 computed=20000.0 (expect 20000 via carry)

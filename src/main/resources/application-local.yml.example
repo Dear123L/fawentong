@@ -1,0 +1,66 @@
+# ==========================================================================
+# 本地开发配置模板（占位符版）
+#
+# 用法：
+#   1. 复制本文件为 application-local.yml（该文件已被 .gitignore 排除，不会提交）
+#      cp application-local.yml.example application-local.yml
+#   2. 填入真实值（从各平台控制台获取；不要提交此文件）
+#   3. 或不建文件、直接用环境变量注入：
+#      export DB_PASSWORD=...  export DASHSCOPE_API_KEY=...  等
+#
+# 优先级：application-local.yml > 环境变量 > application.yml 的默认值
+# Spring Boot 会自动加载同目录下的 application-local.yml
+# ==========================================================================
+
+# ---------- 数据库 ----------
+spring:
+  datasource:
+    username: root
+    password: your_mysql_password_here
+
+# ---------- JWT ----------
+# HS256 要求 ≥32 字节；建议 openssl rand -base64 48 生成
+# 泄露此密钥 = 可伪造任意用户身份，务必保密且定期轮转
+jwt:
+  secret: your_jwt_secret_at_least_32_bytes_long_change_me
+
+# ---------- 微信小程序 ----------
+wechat:
+  appid: your_wechat_appid
+  secret: your_wechat_appsecret
+
+# ---------- 阿里云 DashScope（LLM / Embedding） ----------
+dashscope:
+  api:
+    key: sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+    # model: deepseek-v3
+    # 可选：qwen-plus / qwen-turbo / qwen-flash
+
+# ---------- 百度 OCR ----------
+baidu:
+  ocr:
+    app-id: your_baidu_ocr_app_id
+    api-key: your_baidu_ocr_api_key
+    secret-key: your_baidu_ocr_secret_key
+
+# ---------- Coze（AI 法律咨询） ----------
+ai:
+  legal:
+    api-key: pat_xxxxxxxxxxxxxxxxxxxxxxxx
+    # url: https://api.coze.cn/v3/chat
+    # bot-id: your_bot_id
+
+# ---------- 服务对外地址（模板下载链接拼接用） ----------
+file:
+  base-url: http://localhost:8080
+
+# ==========================================================================
+# 可选：非敏感项的本地覆盖（一般无需改，application.yml 已有默认值）
+#   spring:
+#     data:
+#       redis:
+#         host: localhost
+#   elasticsearch:
+#     host: localhost
+#   redis-cli -h <WSL_IP>   # WSL 场景把 host 换成 WSL 网卡 IP
+# ==========================================================================

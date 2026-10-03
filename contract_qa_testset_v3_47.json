@@ -1,0 +1,728 @@
+{
+  "meta": {
+    "knowledge_base_source": "rag_agent/multi_agent_rag.py -> CORPUS（6 条演示条款）",
+    "clause_id_mapping": {
+      "C1": "民法典-第502条（合同生效）",
+      "C2": "付款期限=民法典-第626条；违约金=民法典-第585条",
+      "C3": "民法典-第590条（不可抗力）",
+      "C4": "民法典-第501条（保密义务）",
+      "C5": "民法典-第586条（定金上限20%）+ 民法典-第587条（定金罚则）",
+      "C6": "民法典-第577条（违约责任）"
+    },
+    "penalty_formula": "penalty = principal * (daily_rate_per_mille / 1000) * days",
+    "rate_note": "日万分之五 = 0.5‰，故 daily_rate_per_mille=0.5；注意 multi_agent_rag.py:131 注释写'日万分之五填5'会按本公式得到10倍错误值",
+    "counts": {
+      "retrieve": 13,
+      "calculate": 9,
+      "both": 8,
+      "total": 188,
+      "out_of_scope": 8
+    },
+    "edge_cases": {
+      "principal_0": "T015",
+      "days_0": "T016",
+      "abnormal_high_rate": "T017",
+      "clause_not_stipulated": "T024"
+    },
+    "version": "v2 (re-anchored to real 民法典 clause ids; C1-C6 synthetic removed)",
+    "v3_draft": {
+      "generated_by": "kb_seed_v3.py (DashScope qwen-flash)",
+      "source": "ES rag_knowledge_base (2186 条法典法条)",
+      "leakage_guard": "已排除 v2 用过的 9 个 canonicalId",
+      "counts": {
+        "single": 75,
+        "multi": 30,
+        "compare": 22,
+        "oos": 23,
+        "total_new": 150
+      },
+      "note": "草稿，待人工核验 gold 与答案后再合入 v2 -> v3。"
+    },
+    "v3_info": {
+      "source_draft": "testset_v3_draft.json",
+      "total": 150,
+      "v2_status": "已退役为独立回归基线，不混入 v3",
+      "new_fields_added": [
+        "difficulty",
+        "gold_clause_type",
+        "query_pattern"
+      ],
+      "eval_scorer_compatibility": "eval_scorer 仅读取 id/question/expected_clause_ids/calculation_params/expected_answer/type，新增字段被忽略，向后兼容",
+      "gold_clause_type_dist": {
+        "C1": 9,
+        "C2": 14,
+        "C3": 4,
+        "C4": 3,
+        "C5": 9,
+        "C6": 88,
+        "OOS": 23
+      },
+      "difficulty_dist": {
+        "L1": 55,
+        "L2": 56,
+        "L3": 33,
+        "L4": 6
+      },
+      "query_pattern_dist": {
+        "single": 75,
+        "multi": 30,
+        "compare": 22,
+        "oos": 23
+      },
+      "calc_count": 5,
+      "oos_count": 23
+    }
+  },
+  "data": [
+    {
+      "id": "T039",
+      "type": "retrieve",
+      "question": "如果我同意了对方的合同提议，合同是不是立刻就成立了？",
+      "expected_clause_ids": [
+        "民法典-第483条"
+      ],
+      "calculation_params": null,
+      "expected_answer": "依据 民法典-第483条：承诺生效时合同成立，但是法律另有规定或者当事人另有约定的除外。",
+      "difficulty": "L1",
+      "gold_clause_type": "C1",
+      "query_pattern": "single"
+    },
+    {
+      "id": "T040",
+      "type": "retrieve",
+      "question": "我们签合同时没签字也没盖章，但已经把货发过去了，对方也收了，这算合同成立吗？",
+      "expected_clause_ids": [
+        "民法典-第490条"
+      ],
+      "calculation_params": null,
+      "expected_answer": "依据 民法典-第490条：当事人采用合同书形式订立合同的，自当事人均签名、盖章或者按指印时合同成立。在签名、盖章或者按指印之前，当事人一方已经履行主要义务，对方接受时，该合同成立。法律、行政法规规定或者当事人约定合同应当采用书面形式订立，当事人未采用书面形式但是一方已经履行主要义务，对方接受时，该合同成立。",
+      "difficulty": "L1",
+      "gold_clause_type": "C1",
+      "query_pattern": "single"
+    },
+    {
+      "id": "T041",
+      "type": "retrieve",
+      "question": "我在网上下单买东西，点了提交订单就算合同成立了吗？",
+      "expected_clause_ids": [
+        "民法典-第491条"
+      ],
+      "calculation_params": null,
+      "expected_answer": "依据 民法典-第491条：当事人采用信件、数据电文等形式订立合同要求签订确认书的，签订确认书时合同成立。当事人一方通过互联网等信息网络发布的商品或者服务信息符合要约条件的，对方选择该商品或者服务并提交订单成功时合同成立，但是当事人另有约定的除外。",
+      "difficulty": "L2",
+      "gold_clause_type": "C1",
+      "query_pattern": "single"
+    },
+    {
+      "id": "T042",
+      "type": "retrieve",
+      "question": "如果我逾期交货，但价格涨了，是不是还得按原来的价格算？",
+      "expected_clause_ids": [
+        "民法典-第513条"
+      ],
+      "calculation_params": null,
+      "expected_answer": "依据 民法典-第513条：逾期交付标的物的，遇价格上涨时，按照原价格执行；价格下降时，按照新价格执行。",
+      "difficulty": "L1",
+      "gold_clause_type": "C2",
+      "query_pattern": "single"
+    },
+    {
+      "id": "T043",
+      "type": "retrieve",
+      "question": "对方欠我钱没给，我能直接让他把钱付过来吗？",
+      "expected_clause_ids": [
+        "民法典-第579条"
+      ],
+      "calculation_params": null,
+      "expected_answer": "依据 民法典-第579条：当事人一方未支付价款、报酬、租金、利息，或者不履行其他金钱债务的，对方可以请求其支付。",
+      "difficulty": "L1",
+      "gold_clause_type": "C2",
+      "query_pattern": "single"
+    },
+    {
+      "id": "T044",
+      "type": "retrieve",
+      "question": "施工方搞坏了工程质量，我们能不能让他们免费修好？要是修完耽误交房，责任谁担？",
+      "expected_clause_ids": [
+        "民法典-第801条"
+      ],
+      "calculation_params": null,
+      "expected_answer": "依据 民法典-第801条：因施工人的原因致使建设工程质量不符合约定的，发包人有权请求施工人在合理期限内无偿修理或者返工、改建。经过修理或者返工、改建后，造成逾期交付的，施工人应当承担违约责任。",
+      "difficulty": "L2",
+      "gold_clause_type": "C2",
+      "query_pattern": "single"
+    },
+    {
+      "id": "T045",
+      "type": "retrieve",
+      "question": "如果因为地震导致合同没法继续履行了，我能解除合同吗？",
+      "expected_clause_ids": [
+        "民法典-第563条"
+      ],
+      "calculation_params": null,
+      "expected_answer": "依据 民法典-第563条：因不可抗力致使不能实现合同目的，当事人可以解除合同。",
+      "difficulty": "L1",
+      "gold_clause_type": "C3",
+      "query_pattern": "single"
+    },
+    {
+      "id": "T046",
+      "type": "retrieve",
+      "question": "货在运输时遇到洪水全没了，还没付运费，承运人还能要钱吗？",
+      "expected_clause_ids": [
+        "民法典-第835条"
+      ],
+      "calculation_params": null,
+      "expected_answer": "依据 民法典-第835条：货物在运输过程中因不可抗力灭失，未收取运费的，承运人不得请求支付运费；已经收取运费的，托运人可以请求返还。",
+      "difficulty": "L1",
+      "gold_clause_type": "C3",
+      "query_pattern": "single"
+    },
+    {
+      "id": "T047",
+      "type": "retrieve",
+      "question": "我托运的货在路上被弄坏了，承运人是不是得赔钱？",
+      "expected_clause_ids": [
+        "民法典-第832条"
+      ],
+      "calculation_params": null,
+      "expected_answer": "依据 民法典-第832条：承运人对运输过程中货物的毁损、灭失承担赔偿责任。但是，承运人证明货物的毁损、灭失是因不可抗力、货物本身的自然性质或者合理损耗以及托运人、收货人的过错造成的，不承担赔偿责任。",
+      "difficulty": "L2",
+      "gold_clause_type": "C3",
+      "query_pattern": "single"
+    },
+    {
+      "id": "T048",
+      "type": "retrieve",
+      "question": "合同里说要全面履行义务，那具体包括哪些内容？",
+      "expected_clause_ids": [
+        "民法典-第509条"
+      ],
+      "calculation_params": null,
+      "expected_answer": "依据 民法典-第509条：当事人应当按照约定全面履行自己的义务。当事人应当遵循诚信原则，根据合同的性质、目的和交易习惯履行通知、协助、保密等义务。当事人在履行合同过程中，应当避免浪费资源、污染环境和破坏生态。",
+      "difficulty": "L1",
+      "gold_clause_type": "C4",
+      "query_pattern": "single"
+    },
+    {
+      "id": "T049",
+      "type": "retrieve",
+      "question": "合同都结清了，对方还让我帮忙处理旧东西或者通知相关方，这算不算合理要求？",
+      "expected_clause_ids": [
+        "民法典-第558条"
+      ],
+      "calculation_params": null,
+      "expected_answer": "依据 民法典-第558条：债权债务终止后，当事人应当遵循诚信等原则，根据交易习惯履行通知、协助、保密、旧物回收等义务。",
+      "difficulty": "L1",
+      "gold_clause_type": "C4",
+      "query_pattern": "single"
+    },
+    {
+      "id": "T050",
+      "type": "retrieve",
+      "question": "我欠别人钱，他能把这个债权转给别人吗？",
+      "expected_clause_ids": [
+        "民法典-第545条"
+      ],
+      "calculation_params": null,
+      "expected_answer": "依据 民法典-第545条：债权人可以将债权的全部或者部分转让给第三人，但是有下列情形之一的除外：（一）根据债权性质不得转让；（二）按照当事人约定不得转让；（三）依照法律规定不得转让。当事人约定非金钱债权不得转让的，不得对抗善意第三人。当事人约定金钱债权不得转让的，不得对抗第三人。",
+      "difficulty": "L1",
+      "gold_clause_type": "C5",
+      "query_pattern": "single"
+    },
+    {
+      "id": "T051",
+      "type": "retrieve",
+      "question": "合同里既写了违约金又写了定金，现在对方违约了，我能同时要违约金和定金吗？",
+      "expected_clause_ids": [
+        "民法典-第588条"
+      ],
+      "calculation_params": null,
+      "expected_answer": "依据 民法典-第588条：当事人既约定违约金，又约定定金的，一方违约时，对方可以选择适用违约金或者定金条款。定金不足以弥补一方违约造成的损失的，对方可以请求赔偿超过定金数额的损失。",
+      "difficulty": "L1",
+      "gold_clause_type": "C5",
+      "query_pattern": "single"
+    },
+    {
+      "id": "T052",
+      "type": "retrieve",
+      "question": "我欠别人钱，能不能跟他说不能把这笔债转给别人？",
+      "expected_clause_ids": [
+        "民法典-第545条"
+      ],
+      "calculation_params": null,
+      "expected_answer": "依据 民法典-第545条：债权人可以将债权的全部或者部分转让给第三人，但是有下列情形之一的除外：（一）根据债权性质不得转让；（二）按照当事人约定不得转让；（三）依照法律规定不得转让。当事人约定非金钱债权不得转让的，不得对抗善意第三人。当事人约定金钱债权不得转让的，不得对抗第三人。",
+      "difficulty": "L2",
+      "gold_clause_type": "C5",
+      "query_pattern": "single"
+    },
+    {
+      "id": "T053",
+      "type": "retrieve",
+      "question": "签合同的时候，必须写哪些基本内容啊？",
+      "expected_clause_ids": [
+        "民法典-第470条"
+      ],
+      "calculation_params": null,
+      "expected_answer": "依据 民法典-第470条：合同内容一般包括当事人的姓名或名称和住所、标的、数量、质量、价款或报酬、履行期限、地点和方式、违约责任以及解决争议的方法。",
+      "difficulty": "L1",
+      "gold_clause_type": "C6",
+      "query_pattern": "single"
+    },
+    {
+      "id": "T054",
+      "type": "retrieve",
+      "question": "如果我改了对方发来的要约里的价格或者交货时间，算不算新要约？",
+      "expected_clause_ids": [
+        "民法典-第488条"
+      ],
+      "calculation_params": null,
+      "expected_answer": "依据 民法典-第488条：对要约内容作出实质性变更，如标的、数量、质量、价款、履行期限、履行地点和方式、违约责任、解决争议方法等的变更，视为新要约。",
+      "difficulty": "L1",
+      "gold_clause_type": "C6",
+      "query_pattern": "single"
+    },
+    {
+      "id": "T055",
+      "type": "retrieve",
+      "question": "我们签了个预订书说以后要签正式合同，现在对方不想签了，能追究他责任吗？",
+      "expected_clause_ids": [
+        "民法典-第495条"
+      ],
+      "calculation_params": null,
+      "expected_answer": "依据 民法典-第495条：当事人约定在将来一定期限内订立合同的认购书、订购书、预订书等构成预约合同，一方不履行订立合同义务的，对方可请求其承担预约合同的违约责任。",
+      "difficulty": "L2",
+      "gold_clause_type": "C6",
+      "query_pattern": "single"
+    },
+    {
+      "id": "T056",
+      "type": "retrieve",
+      "question": "某买卖合同约定执行政府指导价，标的物应于2023年10月1日交付。因卖方逾期至2023年10月15日才交付，期间政府价格上调。若该合同项下债权已依法转让给第三人，且转让时未违反任何禁止性规定，买方应按何价格支付货款？请结合政府定价规则与债权转让效力分析。",
+      "expected_clause_ids": [
+        "民法典-第513条",
+        "民法典-第545条"
+      ],
+      "calculation_params": null,
+      "expected_answer": "根据民法典第513条，逾期交付标的物遇价格上涨时应按原价格执行；根据第545条，债权人可将债权转让，且金钱债权的转让不受当事人约定限制。因此，买方仍应按原合同约定的交付时价格支付货款，不受政府调价影响。",
+      "difficulty": "L3",
+      "gold_clause_type": "C2",
+      "query_pattern": "multi"
+    },
+    {
+      "id": "T057",
+      "type": "retrieve",
+      "question": "甲公司与乙公司签订政府指导价商品买卖合同，约定2023年9月30日前交货。因甲公司逾期至10月10日才交付，期间政府调高指导价。后乙公司将该债权全部转让给丙公司。请问丙公司能否主张按新价格结算？请结合价格执行规则与债权转让效力说明理由。",
+      "expected_clause_ids": [
+        "民法典-第513条",
+        "民法典-第545条"
+      ],
+      "calculation_params": null,
+      "expected_answer": "根据民法典第513条，逾期交付标的物遇价格上涨时应按原价格执行；根据第545条，金钱债权可自由转让，且不得对抗善意第三人。因此，丙公司无权要求按新价格结算，只能按原合同价格主张债权。",
+      "difficulty": "L3",
+      "gold_clause_type": "C2",
+      "query_pattern": "multi"
+    },
+    {
+      "id": "T058",
+      "type": "retrieve",
+      "question": "某政府指导价采购合同约定2023年8月15日交货，但卖方迟延至8月25日才交付，期间政府下调价格。买方在交货前已将债权转让给第三方。此时买方是否仍需按新价格付款？请依据政府定价调整规则与债权转让制度进行综合判断。",
+      "expected_clause_ids": [
+        "民法典-第513条",
+        "民法典-第545条"
+      ],
+      "calculation_params": null,
+      "expected_answer": "根据民法典第513条，逾期交付标的物遇价格下降时应按新价格执行；根据第545条，金钱债权可依法转让，且转让不因当事人约定而受限。因此，受让方有权要求按新价格结算，买方应以新价格履行付款义务。",
+      "difficulty": "L3",
+      "gold_clause_type": "C2",
+      "query_pattern": "multi"
+    },
+    {
+      "id": "T059",
+      "type": "retrieve",
+      "question": "甲公司向乙公司订购一批货物，约定由乙公司于2023年6月1日交付，合同适用政府指导价。乙公司于6月10日才完成交付，期间政府价格上调。若乙公司发出的要约在6月5日即被甲公司承诺，合同是否成立？此时应按何价格结算？请结合合同成立时间与政府定价规则分析。",
+      "expected_clause_ids": [
+        "民法典-第513条",
+        "民法典-第483条"
+      ],
+      "calculation_params": null,
+      "expected_answer": "根据民法典第483条，承诺生效时合同成立，故合同成立于6月5日；根据第513条，逾期交付标的物遇价格上涨时应按原价格执行。因此，应按6月5日原合同约定价格结算。",
+      "difficulty": "L3",
+      "gold_clause_type": "C2",
+      "query_pattern": "multi"
+    },
+    {
+      "id": "T060",
+      "type": "retrieve",
+      "question": "某政府采购项目中，供应商应于2023年7月1日交付标的物，合同依政府指导价执行。实际交付时间为7月8日，期间政府调价。若供应商在6月30日发出要约，采购单位于7月2日作出承诺，合同何时成立？逾期交付情形下应执行哪一价格？请结合合同成立时点与价格调整规则回答。",
+      "expected_clause_ids": [
+        "民法典-第513条",
+        "民法典-第483条"
+      ],
+      "calculation_params": null,
+      "expected_answer": "根据民法典第483条，承诺生效时合同成立，故合同成立于7月2日；根据第513条，逾期交付标的物遇价格上涨时应按原价格执行。因此，应按7月2日原合同价格计价。",
+      "difficulty": "L3",
+      "gold_clause_type": "C2",
+      "query_pattern": "multi"
+    },
+    {
+      "id": "T061",
+      "type": "retrieve",
+      "question": "某服务合同中约定乙方提供的服务报酬为10万元，并明确不得转让债权。后乙方将该债权转让给丙方。该合同虽包含“不得转让”条款，但属于金钱债权。若丙方主张权利，法院应如何认定其合法性？请结合违约责任条款与债权转让例外情形分析。",
+      "expected_clause_ids": [
+        "民法典-第545条",
+        "民法典-第470条"
+      ],
+      "calculation_params": null,
+      "expected_answer": "根据民法典第470条，合同应包含违约责任条款；根据第545条，当事人约定金钱债权不得转让的，不得对抗第三人。因此，尽管合同有“不得转让”约定，丙方作为受让人仍可主张权利，该条款对第三人无效。",
+      "difficulty": "L3",
+      "gold_clause_type": "C5",
+      "query_pattern": "multi"
+    },
+    {
+      "id": "T062",
+      "type": "retrieve",
+      "question": "甲公司与乙公司订立技术服务合同，约定报酬为15万元，且双方书面约定该债权不得转让。后乙公司将该债权转让给丙公司。若丙公司提起诉讼，请求支付报酬，法院是否支持？请结合合同内容条款与债权转让禁止性规定的适用条件进行分析。",
+      "expected_clause_ids": [
+        "民法典-第545条",
+        "民法典-第470条"
+      ],
+      "calculation_params": null,
+      "expected_answer": "根据民法典第470条，合同应包括价款和违约责任等条款；根据第545条，当事人约定金钱债权不得转让的，不得对抗第三人。因此，即使存在禁止转让约定，该条款不能对抗善意受让人丙公司，法院应支持其请求。",
+      "difficulty": "L2",
+      "gold_clause_type": "C5",
+      "query_pattern": "multi"
+    },
+    {
+      "id": "T063",
+      "type": "retrieve",
+      "question": "某房屋租赁合同约定租期三年，租金每半年支付一次。承租人连续两次逾期支付租金，经出租人催告后仍未支付。出租人据此主张解除合同。该解除行为是否合法？请结合违约行为类型、催告程序及合同必备条款进行分析。",
+      "expected_clause_ids": [
+        "民法典-第563条",
+        "民法典-第470条"
+      ],
+      "calculation_params": null,
+      "expected_answer": "根据民法典第563条，当事人一方迟延履行债务，经催告后在合理期限内仍未履行，另一方可以解除合同；根据第470条，合同应包括履行期限、方式等条款。本案中承租人逾期付款且经催告未补救，符合法定解除条件，出租人有权解除合同。",
+      "difficulty": "L2",
+      "gold_clause_type": "C3",
+      "query_pattern": "multi"
+    },
+    {
+      "id": "T064",
+      "type": "retrieve",
+      "question": "某建材采购合同约定按政府指导价执行，总价款100万元，履行期限为2023年9月1日至10月1日。因卖方逾期至10月15日才交付，期间政府指导价上调20%。若合同中未明确逾期价格责任，买方应按何价格支付？请结合价格调整规则与合同必备条款分析。",
+      "expected_clause_ids": [
+        "民法典-第513条",
+        "民法典-第470条"
+      ],
+      "calculation_params": null,
+      "expected_answer": "根据民法典第513条，逾期交付标的物遇价格上涨时应按原价格执行；根据第470条，合同应包含价款、履行期限等条款。因此，买方应按原合同约定的100万元支付，不受政府调价影响。",
+      "difficulty": "L2",
+      "gold_clause_type": "C2",
+      "query_pattern": "multi"
+    },
+    {
+      "id": "T065",
+      "type": "retrieve",
+      "question": "甲向乙发出购买设备的要约，乙于2023年5月1日作出承诺，合同成立。合同约定乙应于5月10日交付设备，但乙未按时履行。现乙主张合同未实际履行，不应承担全面履行义务。请结合合同成立时间与全面履行义务原则，判断其抗辩是否成立。",
+      "expected_clause_ids": [
+        "民法典-第483条",
+        "民法典-第509条"
+      ],
+      "calculation_params": null,
+      "expected_answer": "根据民法典第483条，承诺生效时合同成立，故合同自5月1日起成立；根据第509条，当事人应按照约定全面履行义务。因此，乙不能以未实际履行抗辩，仍应履行交付义务，否则构成违约。",
+      "difficulty": "L2",
+      "gold_clause_type": "C1",
+      "query_pattern": "multi"
+    },
+    {
+      "id": "T066",
+      "type": "retrieve",
+      "question": "根据《民法典》第513条，若合同约定交付期限内政府价格调整，且买方逾期付款，价格上涨时应按新价还是原价执行？与逾期交付标的物遇价格上涨时的计价规则有何异同？",
+      "expected_clause_ids": [
+        "民法典-第513条",
+        "民法典-第513条"
+      ],
+      "calculation_params": null,
+      "expected_answer": "逾期付款遇价格上涨时，按照新价格执行；逾期交付标的物遇价格上涨时，按照原价格执行。二者区别在于：逾期付款时价格上调对买方不利（按新价），而逾期交付时价格上调对卖方不利（按原价），体现对守约方的保护。相同点是均以交付或履行时间作为计价节点。",
+      "difficulty": "L3",
+      "gold_clause_type": "C2",
+      "query_pattern": "compare"
+    },
+    {
+      "id": "T067",
+      "type": "retrieve",
+      "question": "根据《民法典》第513条，若合同约定交付期限内政府调价，且卖方逾期交付，价格下降时应按新价还是原价执行？与买方逾期提取标的物遇价格下降时的规则有何不同？",
+      "expected_clause_ids": [
+        "民法典-第513条",
+        "民法典-第513条"
+      ],
+      "calculation_params": null,
+      "expected_answer": "逾期交付标的物遇价格下降时，按照新价格执行；逾期提取标的物遇价格下降时，按照原价格执行。不同点在于：卖方逾期交付时，价格下降对卖方有利（按新价），买方逾期提货时，价格下降对买方不利（仍按原价），体现对违约方的惩罚性导向。",
+      "difficulty": "L3",
+      "gold_clause_type": "C2",
+      "query_pattern": "compare"
+    },
+    {
+      "id": "T068",
+      "type": "retrieve",
+      "question": "根据《民法典》第545条，若债权人将一笔金钱债权转让给第三人，但双方事先约定该债权不得转让，该约定是否有效？与非金钱债权的类似约定在法律后果上有何异同？",
+      "expected_clause_ids": [
+        "民法典-第545条",
+        "民法典-第545条"
+      ],
+      "calculation_params": null,
+      "expected_answer": "金钱债权的禁止转让约定不得对抗第三人，因此转让仍有效；非金钱债权的禁止转让约定不得对抗善意第三人，即仅对恶意第三人有约束力。异同点在于：金钱债权一律不具有对抗力，而非金钱债权仅对善意第三人无效，体现对不同类型债权流转的差异化规制。",
+      "difficulty": "L3",
+      "gold_clause_type": "C5",
+      "query_pattern": "compare"
+    },
+    {
+      "id": "T069",
+      "type": "retrieve",
+      "question": "根据《民法典》第470条，合同一般应包含哪八项条款？若某合同缺少‘违约责任’条款，是否影响合同成立？与缺少‘解决争议的方法’相比，法律后果有何不同？",
+      "expected_clause_ids": [
+        "民法典-第470条",
+        "民法典-第470条"
+      ],
+      "calculation_params": null,
+      "expected_answer": "合同一般包括：当事人信息、标的、数量、质量、价款或报酬、履行期限地点方式、违约责任、争议解决方法。缺少‘违约责任’条款不影响合同成立，但可能影响责任承担依据；缺少‘解决争议的方法’也不影响成立，但可能导致争议处理缺乏路径。两者均为可缺省条款，但违约责任更影响权利救济，故实践中应尽量明确。",
+      "difficulty": "L3",
+      "gold_clause_type": "C6",
+      "query_pattern": "compare"
+    },
+    {
+      "id": "T070",
+      "type": "retrieve",
+      "question": "根据《民法典》第509条，当事人全面履行义务的同时还应遵循诚信原则，并履行通知、协助、保密等附随义务。这些义务与主合同义务之间有何关系？在合同履行中出现资源浪费、污染环境的情形，应如何判断责任归属？",
+      "expected_clause_ids": [
+        "民法典-第509条",
+        "民法典-第509条"
+      ],
+      "calculation_params": null,
+      "expected_answer": "附随义务是主合同义务的延伸，依合同性质、目的和交易习惯产生，旨在保障合同目的实现。当履行过程中造成资源浪费、污染环境，即使未违反主合同约定，也构成对附随义务的违反，应承担相应责任。这体现了对生态安全的保护，属于法定的履约要求，不能因约定排除。",
+      "difficulty": "L2",
+      "gold_clause_type": "C4",
+      "query_pattern": "compare"
+    },
+    {
+      "id": "T071",
+      "type": "retrieve",
+      "question": "根据《民法典》第545条，当事人约定金钱债权不得转让的，是否可以对抗第三人？若约定非金钱债权不得转让，其效力如何？两者在对抗第三人方面有何关键差异？",
+      "expected_clause_ids": [
+        "民法典-第545条",
+        "民法典-第545条"
+      ],
+      "calculation_params": null,
+      "expected_answer": "当事人约定金钱债权不得转让的，不得对抗第三人；当事人约定非金钱债权不得转让的，不得对抗善意第三人。关键差异在于：金钱债权禁止转让的约定无对抗力，无论第三人是否善意；而非金钱债权仅在第三人非善意时才受约束，体现了对交易安全和信赖利益的不同保护程度。",
+      "difficulty": "L2",
+      "gold_clause_type": "C5",
+      "query_pattern": "compare"
+    },
+    {
+      "id": "T072",
+      "type": "retrieve",
+      "question": "根据《民法典》第483条，承诺生效时合同成立，但在哪些情形下可例外？请结合‘法律另有规定’与‘当事人另有约定’进行对比分析。",
+      "expected_clause_ids": [
+        "民法典-第483条",
+        "民法典-第483条"
+      ],
+      "calculation_params": null,
+      "expected_answer": "承诺生效时合同成立，但存在例外：一是法律另有规定（如要式合同需登记才成立），二是当事人另有约定（如约定要约生效后承诺须书面确认）。前者由强制性规范决定，不可排除；后者属意思自治范畴，可自由设定，但不得违反法律强制性规定。",
+      "difficulty": "L2",
+      "gold_clause_type": "C1",
+      "query_pattern": "compare"
+    },
+    {
+      "id": "T073",
+      "type": "out_of_scope",
+      "question": "夫妻双方在离婚时如何分割婚后共同购买的房产？",
+      "expected_clause_ids": [],
+      "calculation_params": null,
+      "expected_answer": "应拒答（超出知识库范围）",
+      "difficulty": "L2",
+      "gold_clause_type": "OOS",
+      "query_pattern": "oos",
+      "reject_reason": "涉及婚姻家庭法律关系，属于离婚财产分割范畴，超出合同法中关于生效、付款违约金、不可抗力、保密、定金、违约一般责任的范围。"
+    },
+    {
+      "id": "T074",
+      "type": "out_of_scope",
+      "question": "公司股东之间因股权转让产生纠纷，应如何适用公司法处理？",
+      "expected_clause_ids": [],
+      "calculation_params": null,
+      "expected_answer": "应拒答（超出知识库范围）",
+      "difficulty": "L2",
+      "gold_clause_type": "OOS",
+      "query_pattern": "oos",
+      "reject_reason": "属于公司法领域，涉及股东权利与公司治理，不涉及合同履行中的违约责任或条款约定，超出合同法范畴。"
+    },
+    {
+      "id": "T075",
+      "type": "out_of_scope",
+      "question": "企业在年度所得税汇算清缴中发现漏报收入，税务机关如何追缴税款并加收滞纳金？",
+      "expected_clause_ids": [],
+      "calculation_params": null,
+      "expected_answer": "应拒答（超出知识库范围）",
+      "difficulty": "L2",
+      "gold_clause_type": "OOS",
+      "query_pattern": "oos",
+      "reject_reason": "涉及税收征管和税务合规问题，属于税务法范畴，与合同义务履行无直接关联，超出合同法范围。"
+    },
+    {
+      "id": "T076",
+      "type": "out_of_scope",
+      "question": "劳动者在工作期间遭受工伤，用人单位应承担哪些法律责任？",
+      "expected_clause_ids": [],
+      "calculation_params": null,
+      "expected_answer": "应拒答（超出知识库范围）",
+      "difficulty": "L2",
+      "gold_clause_type": "OOS",
+      "query_pattern": "oos",
+      "reject_reason": "属于劳动法调整范畴，涉及工伤赔偿、社会保险等，与合同违约责任无关，明显超出合同法范围。"
+    },
+    {
+      "id": "T077",
+      "type": "out_of_scope",
+      "question": "注册商标被他人抢注，原申请人应如何通过法律途径维权？",
+      "expected_clause_ids": [],
+      "calculation_params": null,
+      "expected_answer": "应拒答（超出知识库范围）",
+      "difficulty": "L2",
+      "gold_clause_type": "OOS",
+      "query_pattern": "oos",
+      "reject_reason": "涉及知识产权保护中的商标确权程序，属于专利与商标法领域，与合同条款效力及违约责任无直接关系。"
+    },
+    {
+      "id": "T078",
+      "type": "out_of_scope",
+      "question": "继承人对被继承人遗留的债务应如何承担清偿责任？",
+      "expected_clause_ids": [],
+      "calculation_params": null,
+      "expected_answer": "应拒答（超出知识库范围）",
+      "difficulty": "L2",
+      "gold_clause_type": "OOS",
+      "query_pattern": "oos",
+      "reject_reason": "属于继承法调整内容，涉及遗产继承与债务清偿顺序，不涉及合同履行过程中的违约情形。"
+    },
+    {
+      "id": "T079",
+      "type": "out_of_scope",
+      "question": "交通事故中，一方驾驶员负全责，保险公司如何进行理赔？",
+      "expected_clause_ids": [],
+      "calculation_params": null,
+      "expected_answer": "应拒答（超出知识库范围）",
+      "difficulty": "L4",
+      "gold_clause_type": "OOS",
+      "query_pattern": "oos",
+      "reject_reason": "属于交通事故侵权责任与保险理赔范畴，涉及交强险与商业险赔付规则，不属于合同违约责任范畴。"
+    },
+    {
+      "id": "T080",
+      "type": "out_of_scope",
+      "question": "消费者购买到假冒伪劣商品，是否可以主张三倍赔偿？",
+      "expected_clause_ids": [],
+      "calculation_params": null,
+      "expected_answer": "应拒答（超出知识库范围）",
+      "difficulty": "L4",
+      "gold_clause_type": "OOS",
+      "query_pattern": "oos",
+      "reject_reason": "涉及消费者权益保护法中的惩罚性赔偿规定，属于特别法调整范畴，与合同一般违约责任无直接对应关系。"
+    },
+    {
+      "id": "T081",
+      "type": "both",
+      "question": "我和客户签了买卖合同，约定逾期付款违约金按日万分之五算，我欠对方200万逾期15天，违约金是多少？违约金和损失赔偿能不能同时主张？",
+      "expected_clause_ids": [
+        "民法典-第584条",
+        "民法典-第588条"
+      ],
+      "calculation_params": {
+        "principal": 2000000,
+        "daily_rate_per_mille": 0.5,
+        "days": 15,
+        "expected_penalty": 15000.0
+      },
+      "expected_answer": "违约金 = 2000000 × (0.5/1000) × 15 = 15000 元（依约定）。损失赔偿额依 民法典-第584条 相当于因违约造成的损失；违约金与损害赔偿均属违约救济，一般不能重复主张，二者适用关系可类比 民法典-第588条 关于定金与违约金择一的规则。",
+      "difficulty": "L3",
+      "gold_clause_type": "C2",
+      "query_pattern": "multi"
+    },
+    {
+      "id": "T082",
+      "type": "both",
+      "question": "我和对方都违约了：我逾期付款30天，合同日万分之五违约金、欠款50万，我的违约金是多少？对方对我方损失也有过错，能减轻我的责任吗？",
+      "expected_clause_ids": [
+        "民法典-第592条",
+        "民法典-第584条"
+      ],
+      "calculation_params": {
+        "principal": 500000,
+        "daily_rate_per_mille": 0.5,
+        "days": 30,
+        "expected_penalty": 7500.0
+      },
+      "expected_answer": "违约金 = 500000 × (0.5/1000) × 30 = 7500 元。依据 民法典-第592条：当事人都违反合同的各自担责；对方对损失发生有过错的，可减轻我方赔偿责任。损失赔偿范围依 民法典-第584条。",
+      "difficulty": "L3",
+      "gold_clause_type": "C2",
+      "query_pattern": "multi"
+    },
+    {
+      "id": "T083",
+      "type": "both",
+      "question": "对方逾期交货，我按日万分之五、欠款100万、逾期20天算违约金，金额是多少？如果我不采取措施导致损失扩大，扩大的部分还能全要吗？",
+      "expected_clause_ids": [
+        "民法典-第591条",
+        "民法典-第584条"
+      ],
+      "calculation_params": {
+        "principal": 1000000,
+        "daily_rate_per_mille": 0.5,
+        "days": 20,
+        "expected_penalty": 10000.0
+      },
+      "expected_answer": "违约金 = 1000000 × (0.5/1000) × 20 = 10000 元。依据 民法典-第591条：一方违约后对方未采取适当措施致损失扩大的，不得就扩大的损失请求赔偿。损失赔偿依 民法典-第584条。",
+      "difficulty": "L3",
+      "gold_clause_type": "C2",
+      "query_pattern": "multi"
+    },
+    {
+      "id": "T084",
+      "type": "both",
+      "question": "我付了10万定金买车位，卖家反悔不卖了，按定金罚则应退我多少？合同还约定逾期交房日万分之五违约金、房款200万、逾期30天，逾期违约金是多少？这两条能一起主张吗？",
+      "expected_clause_ids": [
+        "民法典-第588条",
+        "民法典-第584条"
+      ],
+      "calculation_params": {
+        "principal": 2000000,
+        "daily_rate_per_mille": 0.5,
+        "days": 30,
+        "expected_penalty": 30000.0
+      },
+      "expected_answer": "定金罚则：收受定金一方不履行的，应双倍返还 = 10万×2 = 20万（民法典-第588条）。逾期交房违约金 = 2000000 × (0.5/1000) × 30 = 30000 元（依约定）。依据 民法典-第588条，定金与违约金只能择一适用，不能并用。",
+      "difficulty": "L3",
+      "gold_clause_type": "C5",
+      "query_pattern": "multi"
+    },
+    {
+      "id": "T085",
+      "type": "both",
+      "question": "房屋买卖标的额500万，我付了120万定金，法律允许的最高定金是多少？同时合同约定逾期付款日万分之五、欠款300万逾期10天的违约金，金额是多少？",
+      "expected_clause_ids": [
+        "民法典-第588条",
+        "民法典-第584条"
+      ],
+      "calculation_params": {
+        "principal": 3000000,
+        "daily_rate_per_mille": 0.5,
+        "days": 10,
+        "expected_penalty": 15000.0
+      },
+      "expected_answer": "定金上限 = 主合同标的额 × 20% = 500万 × 20% = 100万，超出20万部分无效（民法典-第588条 定金条款）。逾期违约金 = 3000000 × (0.5/1000) × 10 = 15000 元（依约定）。定金与违约金择一适用。",
+      "difficulty": "L3",
+      "gold_clause_type": "C5",
+      "query_pattern": "multi"
+    }
+  ]
+}

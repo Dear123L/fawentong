@@ -1,0 +1,173 @@
+使用真实系统输出： results_p1a_full.json
+{
+  "retrieval": {
+    "subset_size": 27,
+    "HR@1": 0.4074,
+    "HR@3": 0.5926,
+    "HR@5": 0.7037,
+    "MRR": 0.5368,
+    "rows": [
+      {
+        "id": "T001",
+        "rank": 1,
+        "hit@5": true
+      },
+      {
+        "id": "T002",
+        "rank": 2,
+        "hit@5": true
+      },
+      {
+        "id": "T003",
+        "rank": null,
+        "hit@5": false
+      },
+      {
+        "id": "T004",
+        "rank": 3,
+        "hit@5": true
+      },
+      {
+        "id": "T005",
+        "rank": 1,
+        "hit@5": true
+      },
+      {
+        "id": "T006",
+        "rank": 1,
+        "hit@5": true
+      },
+      {
+        "id": "T007",
+        "rank": 4,
+        "hit@5": true
+      },
+      {
+        "id": "T008",
+        "rank": 4,
+        "hit@5": true
+      },
+      {
+        "id": "T009",
+        "rank": 1,
+        "hit@5": true
+      },
+      {
+        "id": "T010",
+        "rank": 1,
+        "hit@5": true
+      },
+      {
+        "id": "T011",
+        "rank": 7,
+        "hit@5": false
+      },
+      {
+        "id": "T012",
+        "rank": 3,
+        "hit@5": true
+      },
+      {
+        "id": "T013",
+        "rank": 2,
+        "hit@5": true
+      },
+      {
+        "id": "T014",
+        "rank": 1,
+        "hit@5": true
+      },
+      {
+        "id": "T015",
+        "rank": 4,
+        "hit@5": true
+      },
+      {
+        "id": "T017",
+        "rank": 8,
+        "hit@5": false
+      },
+      {
+        "id": "T018",
+        "rank": 6,
+        "hit@5": false
+      },
+      {
+        "id": "T021",
+        "rank": null,
+        "hit@5": false
+      },
+      {
+        "id": "T022",
+        "rank": 7,
+        "hit@5": false
+      },
+      {
+        "id": "T023",
+        "rank": 1,
+        "hit@5": true
+      },
+      {
+        "id": "T024",
+        "rank": 1,
+        "hit@5": true
+      },
+      {
+        "id": "T025",
+        "rank": null,
+        "hit@5": false
+      },
+      {
+        "id": "T026",
+        "rank": null,
+        "hit@5": false
+      },
+      {
+        "id": "T027",
+        "rank": 1,
+        "hit@5": true
+      },
+      {
+        "id": "T028",
+        "rank": 2,
+        "hit@5": true
+      },
+      {
+        "id": "T029",
+        "rank": 1,
+        "hit@5": true
+      },
+      {
+        "id": "T030",
+        "rank": 1,
+        "hit@5": true
+      }
+    ]
+  },
+  "calculation": {
+    "field_acc": {
+      "principal": 1.0,
+      "days": 1.0,
+      "rate": 1.0
+    },
+    "overall_param_acc": 1.0,
+    "amount_acc": 1.0,
+    "amount_failures": []
+  },
+  "e2e": {
+    "confusion": {
+      "TP": 8,
+      "FN": 0,
+      "FP": 0,
+      "TN": 30
+    },
+    "reject_accuracy": 1.0,
+    "reject_precision": 1.0,
+    "reject_recall": 1.0,
+    "replan_rate": 0.1579
+  },
+  "generation": {
+    "faithfulness_mean": 5.0,
+    "faithfulness_passrate": 1.0,
+    "answer_relevance_mean": 5.0,
+    "ans

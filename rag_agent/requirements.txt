@@ -1,0 +1,15 @@
+# ---- 检索与向量 ----
+sentence-transformers>=2.3     # 生成句向量（默认 bge-small-zh-v1.5，维度 512）
+jieba>=0.42                    # 仅用于 ES 不可用时的内存降级分词
+numpy>=1.24                    # 仅用于 ES 不可用时的内存降级（向量点积）
+rank_bm25>=0.2.2               # 仅用于 ES 不可用时的内存降级
+elasticsearch>=8.11            # 混合检索：BM25(ik_max_word) + KNN(dense_vector)
+# 注意：ES 还需安装 ik 分词插件（版本必须与 ES 严格一致），例如：
+#   docker exec -i <容器> bin/elasticsearch-plugin install --batch \
+#     https://get.infini.cloud/elasticsearch/analysis-ik/8.13.4
+
+# ---- 大模型 / 编排 / 服务化 ----
+openai>=1.0                    # Qwen(DashScope) 兼容 OpenAI 接口
+langgraph>=0.2                 # 检索→评分→重写→生成 工作流编排
+fastapi>=0.110                 # REST 服务化
+uvicorn>=0.29
