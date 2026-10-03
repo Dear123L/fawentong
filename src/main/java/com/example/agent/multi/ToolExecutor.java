@@ -15,13 +15,13 @@ import java.util.Map;
 /**
  * 工具执行器：分发多智能体所需的 function calling 工具。
  *  - calculate_penalty：确定性违约金计算（含入参 JSON schema 校验 + 上下文感知量级归一化）
- *  - cite_clause：从合同知识库（ES 混合检索）溯源最相关条款原文
+ *  - cite_clause：从法律知识库（ES 混合检索）溯源最相关条款原文
  */
 
 /**
  * 工具执行器：分发多智能体所需的 function calling 工具。
  *  - calculate_penalty：确定性违约金计算
- *  - cite_clause：从合同知识库（ES 混合检索）溯源最相关条款原文
+ *  - cite_clause：从法律知识库（ES 混合检索）溯源最相关条款原文
  */
 @Slf4j
 @Component

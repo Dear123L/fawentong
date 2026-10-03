@@ -63,7 +63,7 @@ public class CriticNode {
     /** 让 LLM 评审：是否充分、有据可查、直接回答了问题 */
     private boolean llmSaysInsufficient(String answer, String question) {
         try {
-            String prompt = "你是对合同问答质量的评审专家。\n"
+            String prompt = "你是对法律问答质量的评审专家。\n"
                     + "用户问题：" + question + "\n\n"
                     + "候选答案：\n" + answer + "\n\n"
                     + "该答案是否充分、有据可查、且直接回答了用户问题？"

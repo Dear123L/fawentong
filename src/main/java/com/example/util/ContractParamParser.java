@@ -6,7 +6,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 合同违约金问题「确定性数值抽取」。
+ * 违约金/利息问题「确定性数值抽取」（12 法域问答中的典型计算类问题）。
  *
  * <p>背景：原实现依赖 LLM(ReAct) 从问题文本抽取 principal/rate/days，即便 temperature=0，
  * DashScope 仍偶发非确定性，且对「万分之五」等中文分数易抽错（如 daily_rate_per_mille 漂到 5），

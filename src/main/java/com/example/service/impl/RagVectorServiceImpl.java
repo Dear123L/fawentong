@@ -293,10 +293,9 @@ public class RagVectorServiceImpl implements RagVectorService {
     private List<Float> embed(String text) throws Exception {
         Map<String, Object> body = new HashMap<>();
         body.put("model", EMBED_MODEL);
-        body.put("input", List.of(text == null ? "" : text));
-        Map<String, Object> parameters = new HashMap<>();
-        parameters.put("dimension", EMBED_DIM);
-        body.put("parameters", parameters);
+        // DashScope 该端点的 input 必须是对象 {"texts": [...]}，传数组会返回 400 IllegalInput
+        body.put("input", Map.of("texts", List.of(text == null ? "" : text)));
+        body.put("parameters", Map.of("dimension", EMBED_DIM));
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);

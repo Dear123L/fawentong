@@ -55,7 +55,7 @@ public class RagChatServiceImpl implements RagChatService {
     private String answer(Long userId, Long kbId, String sessionId, String question) {
         List<Map<String, Object>> docs = ragVectorService.hybridSearch(kbId, question, TOP_K);
         if (docs == null || docs.isEmpty()) {
-            return "抱歉，知识库中未检索到相关合同条款，无法作答。";
+            return "抱歉，知识库中未检索到相关法律条款，无法作答。";
         }
         StringBuilder ctx = new StringBuilder();
         for (int i = 0; i < docs.size(); i++) {

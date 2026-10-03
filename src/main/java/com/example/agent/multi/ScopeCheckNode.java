@@ -391,7 +391,7 @@ public class ScopeCheckNode {
         String profileSection = (userProfile == null || userProfile.isEmpty()) ? "" :
                 "\n\n该用户长期画像（仅供语境）：\n" + userProfile + "\n";
 
-        String prompt = "你是合同问答调度智能体。判断用户问题类型：\n" +
+        String prompt = "你是法律问答调度智能体。判断用户问题类型：\n" +
                 "retrieve = 需要查条款/法条并解释；\n" +
                 "calculate = 需要计算金额/天数/比例等数值；\n" +
                 "both = 既要查条款依据又要算金额。\n" +

@@ -259,7 +259,7 @@ public class RetrieverAgentNode {
     private Double llmDirectCalc(String question) {
         try {
             String ans = toolCallingLlm.chat(
-                    "你是合同违约金计算专家。请根据用户问题直接计算违约金金额。"
+                    "你是违约金与利息计算专家（法律问答支持 12 个法域，违约金计算是典型示例）。请根据用户问题直接计算金额。"
                             + "只输出一个阿拉伯数字（金额，单位：元），不要单位、解释或换行。\n问题：" + question);
             if (ans == null || ans.isBlank()) {
                 return null;

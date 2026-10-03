@@ -82,7 +82,7 @@ public class HistoryCompressor {
      */
     private String buildPrompt(String existingSummary, String evictedText) {
         StringBuilder sb = new StringBuilder();
-        sb.append("你是合同问答系统的对话压缩器。下面是要压缩的历史对话片段（可能是之前摘要的延续）。\n");
+        sb.append("你是法律问答系统的对话压缩器。下面是要压缩的历史对话片段（可能是之前摘要的延续）。\n");
         sb.append("请压缩为一条简洁中文摘要，供后续轮次理解上下文。\n");
         sb.append("硬性要求：\n");
         sb.append("1. 必须原值保留所有数值型约束：金额（本金/违约金/利息）、天数、利率、百分比、封顶值。\n");

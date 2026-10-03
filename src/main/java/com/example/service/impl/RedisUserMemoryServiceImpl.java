@@ -398,7 +398,7 @@ public class RedisUserMemoryServiceImpl implements UserMemoryService {
     }
 
     private String buildExtractPrompt(String question, String answer) {
-        return "你是合同问答系统的用户画像抽取器。给定一轮问答，抽取可长期记住的用户信号，只输出一个 JSON，不要解释。\n"
+        return "你是法律问答系统的用户画像抽取器。给定一轮问答，抽取可长期记住的用户信号，只输出一个 JSON，不要解释。\n"
                 + "JSON 结构：\n"
                 + "{\n"
                 + "  \"contracts\": [\"用户在对话中提及或上传的合同名称/类型，如 买卖合同、借款合同\"],\n"

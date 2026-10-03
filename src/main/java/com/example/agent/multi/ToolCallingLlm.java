@@ -46,14 +46,14 @@ public class ToolCallingLlm {
     private static final String TOOL_INSTRUCTION =
             "你拥有两个工具：\n" +
                     "1) calculate_penalty(principal 本金金额/元, daily_rate_per_mille 日违约金千分比, days 逾期天数)：\n" +
-                    "   合同违约金 = 本金 × (日利率/1000) × 天数。法律金额必须精确，遇到金额计算请务必调用本工具。\n" +
+                    "   违约金 = 本金 × (日利率/1000) × 天数。法律金额必须精确，遇到金额计算请务必调用本工具。\n" +
                     "   入参 JSON schema 约束（违反会被工具拒绝，请务必遵守）：\n" +
                     "     - principal: number，必须为正数（如 1000000，单位元）\n" +
                     "     - daily_rate_per_mille: number，日利率千分比，必须为正数且 <= 100（如「万分之五」=0.5，「5%」=50）\n" +
                     "     - days: integer，必须为正整数（如 30）\n" +
                     "   注意：「万分之X」换算为 X/10 的千分比，「百分之X」换算为 X*10 的千分比。\n" +
                     "2) cite_clause(query 法律问题或条款关键词, top_k 返回条数)：\n" +
-                    "   从合同知识库检索最相关条款原文，让回答有据可查、抑制幻觉。\n" +
+                    "   从法律知识库（12 法域法规库）检索最相关条款原文，让回答有据可查、抑制幻觉。\n" +
                     "当需要调用工具时，只输出如下 JSON（不要包含任何额外文字或解释）：\n" +
                     "{\"tool\":\"<工具名>\",\"arguments\":{...}}\n" +
                     "否则正常回答用户问题。";
