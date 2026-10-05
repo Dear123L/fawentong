@@ -9,9 +9,22 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * 评审智能体（Critic）：对最终答案做充分性 / 引用完整性自检（D）。
- * 若判定不足且未达最大重试次数，则置 needsMore=true，由图路由回退 retriever 重新检索（B 重规划）。
- * 对齐"supervisor + critic"多智能体范式，让调度具备反思与再分派能力。
+ * 评审智能体（Critic）：拼装最终答案 + 对其做充分性 / 引用完整性自检（D）。
+ *
+ * <p>两段职责：
+ * <ol>
+ *   <li><b>拼装</b>——委托 {@link AnswerComposer}（纯函数组件，无 LLM 调用）。
+ *       原为独立的 {@code AnswerAgentNode} 节点，现降级并入本节点，
+ *       目的是去掉一个只做字符串拼接的图节点，同时保持图拓扑扁平。</li>
+ *   <li><b>评审与决策</b>——若判定不足且未达最大重试次数，则置 needsMore=true，
+ *       由图路由回退 retriever 重新检索（B 重规划）。</li>
+ * </ol>
+ *
+ * <p>为何不把拼装完全内联到本类：拼装是纯确定性字符串操作，评审是 LLM 判断。
+ * 分成两个类后，{@link AnswerComposer} 可独立单测（无需 mock 模型调用），
+ * 且 Critic 评的是"外部传入的答案"而非自己刚拼的内容。
+ *
+ * <p>对齐"supervisor + critic"多智能体范式，让调度具备反思与再分派能力。
  */
 @Slf4j
 @Component
@@ -19,6 +32,7 @@ import java.util.concurrent.CompletableFuture;
 public class CriticNode {
 
     private final ToolCallingLlm toolCallingLlm;
+    private final AnswerComposer answerComposer;
 
     /** 重规划最大重试次数（含首次后的回退次数） */
     private static final int MAX_RETRY = 1;
@@ -27,7 +41,11 @@ public class CriticNode {
         return CompletableFuture.supplyAsync(() -> {
             Map<String, Object> updates = new HashMap<>();
             try {
-                String answer = state.getAnswer();
+                // 评审前先拼装答案（原 AnswerAgentNode 的职责，已降级为纯函数组件 AnswerComposer）。
+                // 检查逻辑与降级前完全一致：拼装只是把"谁生成"从节点挪到了这里。
+                String answer = answerComposer.compose(state);
+                updates.put("answer", answer);
+
                 boolean heuristicBad = isHeuristicInsufficient(answer);
                 boolean llmBad = llmSaysInsufficient(answer, state.getQuestion());
 

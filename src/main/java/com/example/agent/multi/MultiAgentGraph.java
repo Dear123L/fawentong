@@ -17,11 +17,14 @@ import static org.bsc.langgraph4j.StateGraph.START;
 /**
  * 多智能体编排图
  *
- * 节点：coordinator（调度） -> retriever（检索）/ calculator（计算） -> answer（综合） -> critic（评审）
+ * 节点：scopeCheck（范围判定+意图路由） -> retriever（检索+计算） -> critic（拼装+评审）
  * 条件路由：
- *   _routeCoord：calculate -> calculator，其余 -> retriever
- *   _routeAfterRetriever：both -> calculator，其余 -> answer
- *   _routeAfterCritic：needsMore -> retriever（重规划重检索），否则 -> END
+ *   scopeCheck：out_of_scope -> END（拒答短路），否则 -> retriever
+ *   critic：needsMore -> retriever（重规划重检索），否则 -> END
+ *
+ * <p>原为 4 节点（answer 为独立的综合节点）。答案拼装已降级为纯函数组件
+ * {@link AnswerComposer} 并入 {@link CriticNode}，图拓扑变为 3 节点。
+ * 改动理由与影响见 {@code 结构精简评估.md}。
  */
 @Slf4j
 @Component
@@ -30,7 +33,6 @@ public class MultiAgentGraph {
 
     private final ScopeCheckNode scopeCheckNode;
     private final RetrieverAgentNode retrieverAgentNode;
-    private final AnswerAgentNode answerAgentNode;
     private final CriticNode criticNode;
 
     private CompiledGraph<MultiAgentState> compiledGraph;
@@ -45,7 +47,6 @@ public class MultiAgentGraph {
 
         graph.addNode("scopeCheck", scopeCheckNode::execute);
         graph.addNode("retriever", retrieverAgentNode::execute);
-        graph.addNode("answer", answerAgentNode::execute);
         graph.addNode("critic", criticNode::execute);
 
         // 范围判定作为最前置关卡：out_of_scope 直接短路到 END（拒答，省去检索/生成）；否则进入正常链路。
@@ -65,10 +66,8 @@ public class MultiAgentGraph {
 
         // 计算由 Retriever 内部承担：依据 intent(both/calculate) 决定是否触发（门控）。
         // 入口意图由 ScopeCheck 在 scope 判定后写入 intent。
-        // 检索（含可能的计算）完成后直接进入综合。
-        graph.addEdge("retriever", "answer");
-        // 综合后进入评审
-        graph.addEdge("answer", "critic");
+        // 检索（含可能的计算）完成后直接进入评审——答案拼装已并入 CriticNode（见 AnswerComposer）。
+        graph.addEdge("retriever", "critic");
 
         // 评审后路由：判定不足且未达上限 -> 回退重检索（重规划）；否则结束
         graph.addConditionalEdges("critic",
