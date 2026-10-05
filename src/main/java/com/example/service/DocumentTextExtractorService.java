@@ -16,12 +16,12 @@ public interface DocumentTextExtractorService {
     String extractText(MultipartFile file);
 
     /**
-     * 文本切片：按固定字符数切分，相邻切片保留 overlap 重叠以维持边界上下文。
+     * 条款级切分：按"第X条"把文本切成独立条款，超长条款（&gt;800 字）递归拆子块。
+     * 同一条款（含子块）共享 {@code canonicalId}，子块靠 {@code subIndex} 区分。
      *
-     * @param text     原始文本
-     * @param size     切片长度（字符）
-     * @param overlap  相邻切片重叠长度（字符）
-     * @return 切片列表
+     * @param text         原始文本
+     * @param sourceLabel  来源标识（通常传 "doc" + docId），用于构造 canonicalId 前缀
+     * @return 条款块列表
      */
-    java.util.List<String> splitText(String text, int size, int overlap);
+    java.util.List<ClauseBlock> splitIntoClauseBlocks(String text, String sourceLabel);
 }

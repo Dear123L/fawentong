@@ -11,6 +11,7 @@ import co.elastic.clients.json.JsonData;
 import com.example.config.RagEsConfig;
 import com.example.entity.KnowledgeDocument;
 import com.example.mapper.KnowledgeDocumentMapper;
+import com.example.service.ClauseBlock;
 import com.example.service.DocumentTextExtractorService;
 import com.example.service.RagVectorService;
 import lombok.extern.slf4j.Slf4j;
@@ -121,13 +122,13 @@ public class RagVectorServiceImpl implements RagVectorService {
             doc.setFilePath(target.toString());
 
             String text = extractor.extractText(file);
-            List<String> chunks = extractor.splitText(text, esConfig.getChunkSize(), esConfig.getChunkOverlap());
-            doc.setChunkCount(chunks.size());
+            List<ClauseBlock> blocks = extractor.splitIntoClauseBlocks(text, "doc" + doc.getId());
+            doc.setChunkCount(blocks.size());
             doc.setStatus("done");
             documentMapper.updateParseResult(doc);
 
-            indexChunks(kbId, doc.getId(), chunks);
-            log.info("文档入库完成: docId={} chunks={}", doc.getId(), chunks.size());
+            indexChunks(kbId, doc.getId(), blocks);
+            log.info("文档入库完成: docId={} chunks={}", doc.getId(), blocks.size());
         } catch (Exception e) {
             log.error("文档处理失败: docId={}", doc.getId(), e);
             doc.setStatus("failed");
@@ -139,30 +140,42 @@ public class RagVectorServiceImpl implements RagVectorService {
         }
     }
 
-    /** 切片逐条向量化后批量写入 ES。 */
-    private void indexChunks(Long kbId, Long docId, List<String> chunks) throws Exception {
-        if (chunks == null || chunks.isEmpty()) {
+    /** 条款块逐条向量化后批量写入 ES；子块 _id 带 #n 后缀，canonicalId 保持不变。 */
+    private void indexChunks(Long kbId, Long docId, List<ClauseBlock> blocks) throws Exception {
+        if (blocks == null || blocks.isEmpty()) {
             return;
         }
         String index = esConfig.getIndexName();
         BulkRequest.Builder bulk = new BulkRequest.Builder();
-        for (int i = 0; i < chunks.size(); i++) {
-            String chunk = chunks.get(i);
-            List<Float> vector = embed(chunk);
+        for (int i = 0; i < blocks.size(); i++) {
+            ClauseBlock block = blocks.get(i);
+            List<Float> vector = embed(block.getContent());
             Map<String, Object> src = new LinkedHashMap<>();
-            src.put("content", chunk);
+            src.put("content", block.getContent());
             src.put("kbId", String.valueOf(kbId));
             src.put("docId", String.valueOf(docId));
-            // clauseId 缺省用 "kbId-docId-chunkIdx"，保证评测 HR/MRR 有稳定可比的 gold 锚点
-            src.put("clauseId", kbId + "-" + docId + "-" + i);
+            // 标准条款 ID：供 resolveClauseId 使用；同一条款所有子块共享，保证检索/评测命中整条
+            src.put("canonicalId", block.getCanonicalId());
             src.put("chunkIndex", i);
             src.put("vector", vector);
+            String docId_ = documentIdFor(block);
             bulk.operations(op -> op.index(idx -> idx
                     .index(index)
+                    .id(docId_)
                     .document(JsonData.of(src))));
         }
         esClient.bulk(bulk.build());
-        log.info("已写入 {} 个切片到索引 {}", chunks.size(), index);
+        log.info("已写入 {} 个切片到索引 {}", blocks.size(), index);
+    }
+
+    /**
+     * 子块在 ES 中的文档 _id：主块 = canonicalId；子块 = canonicalId#n。
+     * canonicalId 始终不变，便于按条款维度检索/去重。
+     */
+    String documentIdFor(ClauseBlock b) {
+        return b.getSubIndex() == 0
+                ? b.getCanonicalId()
+                : b.getCanonicalId() + "#" + b.getSubIndex();
     }
 
     @Override
@@ -196,7 +209,7 @@ public class RagVectorServiceImpl implements RagVectorService {
 
             for (Hit<Map> hit : resp.hits().hits()) {
                 Map<String, Object> item = new HashMap<>(hit.source() == null ? Map.of() : hit.source());
-                item.put("clauseId", hit.id());
+                item.put("clauseId", resolveClauseId(item, hit.id()));
                 item.put("bm25Rank", out.size() + 1);
                 out.add(item);
             }
@@ -230,7 +243,7 @@ public class RagVectorServiceImpl implements RagVectorService {
 
             for (Hit<Map> hit : resp.hits().hits()) {
                 Map<String, Object> item = new HashMap<>(hit.source() == null ? Map.of() : hit.source());
-                item.put("clauseId", hit.id());
+                item.put("clauseId", resolveClauseId(item, hit.id()));
                 item.put("knnScore", hit.score());
                 item.put("knnRank", out.size() + 1);
                 out.add(item);
@@ -239,6 +252,18 @@ public class RagVectorServiceImpl implements RagVectorService {
             log.error("KNN 检索失败: {}", e.getMessage());
         }
         return out;
+    }
+
+    /**
+     * 解析返回给上层的 clauseId。
+     *
+     * <p>优先用条款标准 {@code canonicalId}（与评测 gold 对齐）；当文档缺 canonicalId 时
+     * 回退到 ES 文档 {@code _id}。防御性：未来递归拆分子块时 _id 形如 {@code xxx#1}，
+     * 但 canonicalId 仍保持 {@code xxx}，用 canonicalId 可避免与 gold 失配导致 HR 暴跌。
+     */
+    String resolveClauseId(Map<String, Object> source, String hitId) {
+        Object canonical = source == null ? null : source.get("canonicalId");
+        return canonical != null ? String.valueOf(canonical) : hitId;
     }
 
     /**
