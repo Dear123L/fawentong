@@ -2,10 +2,9 @@ package com.example.agent.multi;
 
 import com.example.agent.graph.AgenticRagGraph;
 import com.example.agent.state.AgenticState;
-import com.example.calc.CalcRegistry;
 import com.example.calc.CalcType;
 import com.example.calc.ExtractedParams;
-import com.example.calc.LegalCalculator;
+import com.example.calc.LegalComputeService;
 import com.example.service.SessionMemoryService;
 import com.example.service.UserMemoryService;
 import com.example.util.ContractParamParser;
@@ -38,7 +37,7 @@ public class RetrieverAgentNode {
     private final AgenticRagGraph agenticRagGraph;
     private final ToolCallingLlm toolCallingLlm;
     private final SessionMemoryService sessionMemoryService;
-    private final CalcRegistry calcRegistry;
+    private final LegalComputeService legalComputeService;
     private final UserMemoryService userMemoryService;
 
     /** 从自由文本中抽取首个数字（LLM 直算兜底用） */
@@ -65,6 +64,9 @@ public class RetrieverAgentNode {
 
                 // 评测桥接：把内层检索结果与拒答判定抬到外层 MultiAgentState
                 updates.put("retrievedDocs", finalState.getRetrievedDocs());
+                // 评测口径桥接：评分门**过滤后**的片段（top8）。与上面的 retrievedDocs（门前 top50）
+                // 口径不同并存——评测指标须用本字段，才能与历史基线（门后 top8）对齐。
+                updates.put("gradedDocs", finalState.getGradedDocs());
                 updates.put("rejected", ragAnswer != null
                         && (ragAnswer.contains("无法作答") || ragAnswer.contains("未检索到")));
 
@@ -168,36 +170,27 @@ public class RetrieverAgentNode {
             ep.forceMajeure = pp.forceMajeure;
             ep.question = question;
 
-            // 4.1) 路由（含多轮追问继承上轮 calcType，保住利率上限封顶）
-            CalcType calcType = CalcRegistry.route(question, prevCalcType);
-
+            // 4.1) 路由 + 计算（内核抽到 LegalComputeService，Retriever 与 ClauseReviewer 共用）。
+            //      本服务只做确定性数值计算；session 跨轮继承已在上文完成，LLM 直算兜底保留在下方。
+            LegalComputeService.ComputeResult cr = legalComputeService.compute(ep, prevCalcType, question);
+            CalcType calcType = cr.calcType;
             Double penalty;
             String handoff;
-            if (pp.forceMajeure) {
-                penalty = 0.0;
-                handoff = String.format("不可抗力免责（KB C3）：违约金=0元（问题：%s）", question);
-            } else {
-                LegalCalculator calculator = calcRegistry.get(calcType);
-                Map<String, Object> calc = (calculator != null) ? calculator.compute(ep) : null;
-                if (calc != null && calc.get("penalty") != null) {
-                    penalty = ((Number) calc.get("penalty")).doubleValue();
-                    handoff = String.format("[%s] 本金%.0f元，日利率%.4g‰，%d天，金额=%.2f元（公式 %s）",
-                            calcType, principal, rate, days, penalty, calc.get("formula"));
-                } else if (principal != null && principal > 0 && days != null && days > 0) {
-                    // 确属金额计算题（已抽到本金+天数）但参数仍不完整：降级 LLM 直算，而非默认 0
-                    Double llmVal = llmDirectCalc(question);
-                    if (llmVal != null) {
-                        penalty = llmVal;
-                        handoff = String.format("参数不完整(主路径缺失)，降级 LLM 直算=%.2f元（问题：%s）", penalty, question);
-                    } else {
-                        penalty = null;
-                        handoff = "（计算失败：参数不完整且 LLM 直算无结果）";
-                    }
+            if (cr.penalty == null
+                    && ep.principal != null && ep.principal > 0
+                    && ep.days != null && ep.days > 0) {
+                // 确属金额计算题（已抽到本金+天数）但参数仍不完整：降级 LLM 直算，而非默认 0
+                Double llmVal = llmDirectCalc(question);
+                if (llmVal != null) {
+                    penalty = llmVal;
+                    handoff = String.format("参数不完整(主路径缺失)，降级 LLM 直算=%.2f元（问题：%s）", penalty, question);
                 } else {
-                    // 检索/问比例类问题（无本金或天数）：本就不该算金额，保持 null
                     penalty = null;
-                    handoff = "（非金额计算语境，无需计算）";
+                    handoff = cr.handoff;
                 }
+            } else {
+                penalty = cr.penalty;
+                handoff = cr.handoff;
             }
 
             // 5) 落库：归一化后的确定参数 + 金额，供评测与下一轮继承
