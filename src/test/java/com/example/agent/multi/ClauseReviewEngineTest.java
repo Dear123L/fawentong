@@ -304,22 +304,27 @@ class ClauseReviewEngineTest {
         AtomicReference<String> canned = new AtomicReference<>("风险点：未发现明显风险。");
         ClauseReviewEngine engine = newEngine(calls, canned);
 
-        // newEngine 桩仅造 2 块（< 阈值 3）-> 不产出完备性条目，避免片段被误判
+        // newEngine 桩造 2 块（达阈值 2）-> 产出完备性条目
         ClauseReviewEngine.ReviewReport rpt = engine.review("合同文本", 1L, "doc");
         boolean hasComp = rpt.items.stream().anyMatch(i -> "【合同完备性】".equals(i.clauseLabel));
-        assertFalse(hasComp, "条款数不足阈值时不应做完备性检查（片段非完整合同）");
-        assertEquals(2, rpt.getReviewedCount());
+        assertTrue(hasComp, "2 条款达阈值应产出完备性条目");
+        assertEquals(3, rpt.getReviewedCount());
 
-        // 阈值边界一：条款数 < 4 时不检查
-        assertTrue(engine.checkCompleteness("第一条 甲乙双方协商一致。", 2).isEmpty(),
-                "条款数低于阈值不应报缺失");
+        // 阈值边界一：单条款（1）不检查，避免用户粘贴单个条款被误判为合同缺陷
+        assertTrue(engine.checkCompleteness("第一条 甲乙双方协商一致。", 1).isEmpty(),
+                "单条款不应报缺失");
+        // 阈值边界二：2 条款（达阈值）且缺多项 -> 报缺失
+        List<String> atTwo = engine.checkCompleteness("甲方应按期交货，乙方应按期付款。", 2);
+        assertTrue(atTwo.size() >= 2, "2 条款缺多项应报缺失，实际=" + atTwo);
+        // 阈值边界三：0 条款但有实质内容（自由文本）-> 同样检查
+        List<String> freeText = engine.checkCompleteness("双方达成如下协议，共同遵守。", 0);
+        assertTrue(freeText.size() >= 2, "无编号自由文本应报缺失，实际=" + freeText);
         // 阈值边界二：仅缺 1 项（生效条件）不作为风险
         List<String> oneMissing = engine.checkCompleteness(
                 "甲方与乙方就货物标的、数量、价款、交付时间、违约责任、争议解决等达成一致。", 4);
         assertTrue(oneMissing.isEmpty(), "仅缺 1 项不应判为风险，实际=" + oneMissing);
-        // 条款数 >= 3 且缺多项 -> 报缺失
-        List<String> atThreshold = engine.checkCompleteness("甲乙双方就合作事项达成协议。", 3);
-        assertTrue(atThreshold.size() >= 2, "达阈值且缺多项应报>=2项，实际=" + atThreshold);
+        // 极短文本（<8 字）不做检查，避免噪声
+        assertTrue(engine.checkCompleteness("嗯", 0).isEmpty(), "极短文本不应报缺失");
         // 条款数足够且缺多项 → 报缺失
         List<String> manyMissing = engine.checkCompleteness("甲乙双方就合作事项达成协议。", 5);
         assertTrue(manyMissing.size() >= 2, "要素严重缺失应报>=2项，实际=" + manyMissing);

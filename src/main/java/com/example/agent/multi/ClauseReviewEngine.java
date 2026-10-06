@@ -115,10 +115,13 @@ public class ClauseReviewEngine {
     };
 
     /**
-     * 触发完备性检查的最小条款数：条款过少时（用户只粘贴单个条款）不检查完整性，
-     * 否则会把「片段缺要素」误判为合同缺陷。
+     * 触发完备性检查的最小条款数。
+     *
+     * <p>此前取 3，导致 2 条款的合同（如「交付+付款」两条）完全不做完整性检查，
+     * 实测缺失类检出仅 40%。现取 2：单条款片段仍不检查（避免把用户粘贴的
+     * 单个条款误判为合同缺陷），2 条及以上才判定。</p>
      */
-    private static final int COMPLETENESS_MIN_CLAUSES = 3;
+    private static final int COMPLETENESS_MIN_CLAUSES = 2;
 
     /**
      * 触发完备性风险提示的最少缺失项数：缺 1 项通常属正常书写差异，
@@ -468,7 +471,10 @@ public class ClauseReviewEngine {
         if (contractText == null || contractText.isBlank()) {
             return missing;
         }
-        if (clauseCount < COMPLETENESS_MIN_CLAUSES) {
+        // 无编号的自由文本（0 条款）也属「要素可疑」情形：连「第X条」结构都没有，
+        // 几乎不可能是完整合同，不应因条款数为 0 而跳过检查。
+        boolean unnumberedFreeText = clauseCount == 0 && contractText.length() >= 8;
+        if (clauseCount < COMPLETENESS_MIN_CLAUSES && !unnumberedFreeText) {
             return missing;
         }
         for (String[] item : COMPLETENESS_ITEMS) {
@@ -486,10 +492,14 @@ public class ClauseReviewEngine {
         return missing;
     }
 
-    /** 引言块判定：切分器把首条款前的文本标记为 canonicalId 以「-引言」结尾。 */
+    /**
+     * 非条款块判定（不参与逐条款审查与条款计数）：
+     * 切分器把首条款前的引言标记为「-引言」，无条款结构的整段文本标记为「-全文」。
+     * 前者是提问语句、后者根本不是条款，都不应被当作合同条款审查。
+     */
     private boolean isIntroBlock(ClauseBlock block) {
         String id = block.getCanonicalId();
-        return id != null && id.endsWith("-引言");
+        return id != null && (id.endsWith("-引言") || id.endsWith("-全文"));
     }
 
     /** 统计真正参与审查的条款数（排除引言块）。 */
