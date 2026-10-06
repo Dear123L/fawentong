@@ -5,6 +5,7 @@ import com.example.agent.state.AgenticState;
 import com.example.calc.CalcType;
 import com.example.calc.ExtractedParams;
 import com.example.calc.LegalComputeService;
+import com.example.service.MemoryMessage;
 import com.example.service.SessionMemoryService;
 import com.example.service.UserMemoryService;
 import com.example.util.ContractParamParser;
@@ -40,6 +41,43 @@ public class RetrieverAgentNode {
     private final LegalComputeService legalComputeService;
     private final UserMemoryService userMemoryService;
 
+    /** 审查轮写入的结论标记，供后续问答轮读取。 */
+    private static final String REVIEW_MARKER = "【已审查条款】";
+
+    /** 拼接 prompt 用的换行，避免多处硬编码。 */
+    private static final String NL = "\n";
+
+    /**
+     * 读取上轮审查写入的条款原文摘要。
+     *
+     * <p>审查分支会把被判定有风险的条款原文以「【已审查条款】」标记写进会话历史。
+     * 追问轮走问答路径时，检索片段来自法规库、不含用户所问的那份合同，
+     * 因此需要把这部分原文接进prompt，LLM 才能针对具体条款作答。</p>
+     *
+     * @return 含标记的摘要文本；本会话无审查记录时返回 null
+     */
+    private String readReviewContext(String sessionId) {
+        if (sessionId == null) {
+            return null;
+        }
+        try {
+            List<MemoryMessage> history = sessionMemoryService.getHistory(sessionId);
+            if (history == null || history.isEmpty()) {
+                return null;
+            }
+            // 倒序找最近一条含标记的消息；命中即返回（更早的审查结论已被后续轮次取代）
+            for (int i = history.size() - 1; i >= 0; i--) {
+                String content = history.get(i).content();
+                if (content != null && content.contains(REVIEW_MARKER)) {
+                    return "以下是用户此前提交审查的合同条款原文：" + NL + content.trim();
+                }
+            }
+        } catch (Exception e) {
+            log.warn("读取审查上下文失败，按无上下文处理：{}", e.getMessage());
+        }
+        return null;
+    }
+
     /** 从自由文本中抽取首个数字（LLM 直算兜底用） */
     private static final Pattern NUMBER = Pattern.compile("\\d+(?:\\.\\d+)?");
 
@@ -51,9 +89,18 @@ public class RetrieverAgentNode {
                 String recalled = userMemoryService.recall(state.getUserId(), state.getQuestion());
                 updates.put("userProfile", recalled != null ? recalled : "");
 
-                // 1) 主检索：复用单图版 AgenticRAG 工作流
+                // 1) 主检索：复用单图版AgenticRAG 工作流
+                // originalQuestion 会进入内层生成节点的 prompt，但不参与检索（检索用 currentQuery）。
+                // 审查轮之后追问时，把上轮已审查的风险条款原文接在问题前——检索片段里通常没有
+                // 用户所问的那份合同条款原文，接上后 LLM 才能回答「第三条为什么有问题」。
+                String questionForPrompt = state.getQuestion();
+                String reviewContext = readReviewContext(state.getSessionId());
+                if (reviewContext != null && !reviewContext.isBlank()) {
+                    questionForPrompt = reviewContext + NL + NL + "用户问题：" + state.getQuestion();
+                }
+
                 Map<String, Object> input = new HashMap<>();
-                input.put("originalQuestion", state.getQuestion());
+                input.put("originalQuestion", questionForPrompt);
                 input.put("currentQuery", state.getQuestion());
                 input.put("retryCount", 0);
                 input.put("needRetrieval", true);
