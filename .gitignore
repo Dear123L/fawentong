@@ -126,9 +126,17 @@ logs/
 *.rdb
 *.tmp
 *.bak
+*.gz
+*.iml
 t.py
 carryout.txt
 demotoken.txt
+
+# 6) 仓库外的本地目录（整理后新增，防止误建/误提交）
+_local_scripts/
+_local_reports/
+_local_results/
+_local_logs/
 
 # 6) 备份目录
 本地归档_报告/
