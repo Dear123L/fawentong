@@ -71,9 +71,10 @@ public class MemoryDebugController {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("userId", userId);
         UserMemoryProfile p = userMemoryService.getProfile(userId);
-        out.put("contracts", p.contracts);
+        out.put("topics", p.topics);
         out.put("preferences", p.preferences);
         out.put("freqQA", p.freqQA);
+        out.put("reviewHistory", p.reviewHistory);
         out.put("corrections", p.corrections);
         out.put("lastActive", p.lastActive);
         return out;

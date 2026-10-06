@@ -26,7 +26,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * 用户长期记忆的 Redis 实现（P1b）。
  *
- * 存储：Redis Hash {@code user:profile:{uid}}，字段 contracts/preferences/freqQA/corrections/lastActive，
+ * 存储：Redis Hash {@code user:profile:{uid}}，字段 topics/preferences/freqQA/reviewHistory/corrections/lastActive，
  * 均 30 天 TTL（长期，比 7 天会话记忆更长）。
  *
  * 摊销写入：每会话维护计数器 {@code user:extractcnt:{sid}}，仅当计数达到「每 3 轮」时调用一次 LLM 抽取。
@@ -58,9 +58,17 @@ public class RedisUserMemoryServiceImpl implements UserMemoryService {
     private static final long PROFILE_TTL_DAYS = 30;
     private static final long PROFILE_TTL_SECONDS = PROFILE_TTL_DAYS * 24L * 3600L;
 
-    private static final String F_CONTRACTS = "contracts";
+    /** 咨询过的法律领域或文件类型（承接原contracts 字段） */
+    private static final String F_TOPICS = "topics";
+    /**
+     * 旧字段名，仅用于迁移读取：早期画像把法律领域记在合同语义的 contracts 下。
+     * 读到后会并入 topics 并删除该旧键，不保留双份。
+     */
+    private static final String F_CONTRACTS_LEGACY = "contracts";
     private static final String F_PREFERENCES = "preferences";
     private static final String F_FREQQA = "freqQA";
+    /** 审查过的条款类型与风险类型：{clause, risk} */
+    private static final String F_REVIEWHISTORY = "reviewHistory";
     private static final String F_CORRECTIONS = "corrections";
     private static final String F_LASTACTIVE = "lastActive";
 
@@ -81,16 +89,49 @@ public class RedisUserMemoryServiceImpl implements UserMemoryService {
             if (h == null || h.isEmpty()) {
                 return p;
             }
-            p.contracts = readList(h.get(F_CONTRACTS), new TypeReference<List<String>>() {});
+            p.topics = readList(h.get(F_TOPICS), new TypeReference<List<String>>() {});
             p.preferences = readMap(h.get(F_PREFERENCES), new TypeReference<Map<String, String>>() {});
             p.freqQA = readList(h.get(F_FREQQA), new TypeReference<List<Map<String, String>>>() {});
+            p.reviewHistory = readList(h.get(F_REVIEWHISTORY), new TypeReference<List<Map<String, String>>>() {});
             p.corrections = readList(h.get(F_CORRECTIONS), new TypeReference<List<Map<String, String>>>() {});
             Object la = h.get(F_LASTACTIVE);
             p.lastActive = la != null ? la.toString() : null;
+            migrateLegacyContracts(userId, h, p);
         } catch (Exception e) {
             log.warn("读取用户画像失败（Redis 不可用？），降级为空", e);
         }
         return p;
+    }
+
+    /**
+     * 兼容旧画像字段：早期把法律领域记在 {@code contracts} 下，语义窄于合同。
+     * 读取时若 {@code topics} 为空而旧字段有值，则沿用旧值、回写新字段并删除旧键，
+     * 不保留双份——避免后续召回同时注入两份相同内容。迁移失败只记录日志，
+     * 不影响本次读取。
+     */
+    private void migrateLegacyContracts(Long userId, Map<Object, Object> hash, UserMemoryProfile p) {
+        Object legacyRaw = hash.get(F_CONTRACTS_LEGACY);
+        if (legacyRaw == null) {
+            return;
+        }
+        try {
+            List<String> legacy = readList(legacyRaw, new TypeReference<List<String>>() {});
+            if (p.topics == null) {
+                p.topics = new ArrayList<>();
+            }
+            if (p.topics.isEmpty() && legacy != null && !legacy.isEmpty()) {
+                p.topics.addAll(legacy);
+                String key = PROFILE_PREFIX + userId;
+                redis.opsForHash().put(key, F_TOPICS, objectMapper.writeValueAsString(p.topics));
+                redis.opsForHash().delete(key, F_CONTRACTS_LEGACY);
+                log.info("长期画像字段迁移：contracts -> topics（{} 条）", p.topics.size());
+            } else {
+                // 已有新字段数据，仅清理旧键
+                redis.opsForHash().delete(PROFILE_PREFIX + userId, F_CONTRACTS_LEGACY);
+            }
+        } catch (Exception e) {
+            log.warn("迁移旧 contracts 字段失败，保留原数据", e);
+        }
     }
 
     // ------------------------- 召回（相关度） -------------------------
@@ -106,8 +147,8 @@ public class RedisUserMemoryServiceImpl implements UserMemoryService {
         }
         // 组装候选片段
         List<String> pieces = new ArrayList<>();
-        if (p.contracts != null && !p.contracts.isEmpty()) {
-            pieces.add("已关注/提及合同：" + String.join("、", p.contracts));
+        if (p.topics != null && !p.topics.isEmpty()) {
+            pieces.add("已咨询领域：" + String.join("、", p.topics));
         }
         if (p.preferences != null && !p.preferences.isEmpty()) {
             pieces.add("偏好：" + p.preferences);
@@ -117,6 +158,14 @@ public class RedisUserMemoryServiceImpl implements UserMemoryService {
                 String q = f.getOrDefault("q", "");
                 String clause = f.get("clause");
                 pieces.add("高频关注：" + q + (clause != null ? "（" + clause + "）" : ""));
+            }
+        }
+        if (p.reviewHistory != null) {
+            for (Map<String, String> r : p.reviewHistory) {
+                String clause = r.get("clause");
+                String risk = r.get("risk");
+                pieces.add("审查过的条款：" + (clause != null ? clause : "")
+                        + (risk != null ? "（风险：" + risk + "）" : ""));
             }
         }
         if (p.corrections != null) {
@@ -223,8 +272,8 @@ public class RedisUserMemoryServiceImpl implements UserMemoryService {
     /** 把抽取信号合并进已有画像并写回 Redis。 */
     private void mergeAndSave(Long userId, Map<String, Object> signals) {
         UserMemoryProfile p = getProfile(userId);
-        if (p.contracts == null) {
-            p.contracts = new ArrayList<>();
+        if (p.topics == null) {
+            p.topics = new ArrayList<>();
         }
         if (p.preferences == null) {
             p.preferences = new HashMap<>();
@@ -232,13 +281,19 @@ public class RedisUserMemoryServiceImpl implements UserMemoryService {
         if (p.freqQA == null) {
             p.freqQA = new ArrayList<>();
         }
+        if (p.reviewHistory == null) {
+            p.reviewHistory = new ArrayList<>();
+        }
         if (p.corrections == null) {
             p.corrections = new ArrayList<>();
         }
 
-        mergeStringList(p.contracts, signals.get("contracts"));
+        // 兼容模型仍按旧键名返回 signals 的情况
+        Object topicsSignal = signals.get("topics") != null ? signals.get("topics") : signals.get("contracts");
+        mergeStringList(p.topics, topicsSignal);
         mergeStringMap(p.preferences, signals.get("preferences"));
         mergeFreqQA(p.freqQA, signals.get("freqQA"));
+        mergeReviewHistory(p.reviewHistory, signals.get("reviewHistory"));
         mergeCorrections(p.corrections, signals.get("corrections"));
 
         String now = Instant.now().toString();
@@ -246,9 +301,10 @@ public class RedisUserMemoryServiceImpl implements UserMemoryService {
 
         String key = PROFILE_PREFIX + userId;
         try {
-            redis.opsForHash().put(key, F_CONTRACTS, objectMapper.writeValueAsString(p.contracts));
+            redis.opsForHash().put(key, F_TOPICS, objectMapper.writeValueAsString(p.topics));
             redis.opsForHash().put(key, F_PREFERENCES, objectMapper.writeValueAsString(p.preferences));
             redis.opsForHash().put(key, F_FREQQA, objectMapper.writeValueAsString(p.freqQA));
+            redis.opsForHash().put(key, F_REVIEWHISTORY, objectMapper.writeValueAsString(p.reviewHistory));
             redis.opsForHash().put(key, F_CORRECTIONS, objectMapper.writeValueAsString(p.corrections));
             redis.opsForHash().put(key, F_LASTACTIVE, now);
             redis.expire(key, PROFILE_TTL_SECONDS, TimeUnit.SECONDS);
@@ -282,7 +338,38 @@ public class RedisUserMemoryServiceImpl implements UserMemoryService {
         }
     }
 
+    /** 合并审查历史，按「条款类型 + 风险类型」去重。 */
     @SuppressWarnings("unchecked")
+    private void mergeReviewHistory(List<Map<String, String>> target, Object src) {
+        if (!(src instanceof List)) {
+            return;
+        }
+        Set<String> seen = new HashSet<>();
+        for (Map<String, String> f : target) {
+            seen.add(f.getOrDefault("clause", "").trim() + "|" + f.getOrDefault("risk", "").trim());
+        }
+        for (Object o : (List<?>) src) {
+            if (!(o instanceof Map)) {
+                continue;
+            }
+            Map<String, Object> m = (Map<String, Object>) o;
+            String clause = m.get("clause") != null ? String.valueOf(m.get("clause")).trim() : "";
+            String risk = m.get("risk") != null ? String.valueOf(m.get("risk")).trim() : "";
+            if (clause.isEmpty() && risk.isEmpty()) {
+                continue;
+            }
+            String key = clause + "|" + risk;
+            if (seen.contains(key)) {
+                continue;
+            }
+            Map<String, String> entry = new HashMap<>();
+            entry.put("clause", clause);
+            entry.put("risk", risk);
+            target.add(entry);
+            seen.add(key);
+        }
+    }
+
     private void mergeFreqQA(List<Map<String, String>> target, Object src) {
         if (!(src instanceof List)) {
             return;
