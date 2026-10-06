@@ -96,8 +96,7 @@ class ClauseReviewEngineTest {
                 if (p == null || !p.contains("一次性输出结论")) {
                     return CANNED_LLM;
                 }
-                String clause = p.contains("【待审条款】")
-                        ? p.substring(p.indexOf("【待审条款】") + 6) : "";
+                String clause = extractClause(p);
                 if (clause.contains("交付货物")) {
                     return "{\"维度\":\"无关\",\"是否有风险\":\"否\","
                             + "\"风险描述\":\"\",\"法律依据\":\"\",\"改写建议\":\"\"}";
@@ -114,6 +113,18 @@ class ClauseReviewEngineTest {
                 return "{\"维度\":\"语义\",\"是否有风险\":\"否\","
                         + "\"风险描述\":\"\",\"法律依据\":\"\",\"改写建议\":\"\"}";
             }
+
+            /** 只取【待审条款】到【检索到的法规依据】之间的条款正文，避免匹配到说明文字。 */
+            private String extractClause(String p) {
+                int a = p.indexOf("【待审条款】");
+                if (a < 0) {
+                    return "";
+                }
+                int start = a + "【待审条款】".length();
+                int b = p.indexOf("【检索到的法规依据】");
+                return b > start ? p.substring(start, b) : p.substring(start);
+            }
+
         };
 
         return new ClauseReviewEngine(extractor, rag, legal, llm, null);
@@ -225,8 +236,7 @@ class ClauseReviewEngineTest {
                 if (p == null || !p.contains("一次性输出结论")) {
                     return cannedRef.get();
                 }
-                String clause = p.contains("【待审条款】")
-                        ? p.substring(p.indexOf("【待审条款】") + 6) : "";
+                String clause = extractClause(p);
                 boolean risky = cannedRef.get() != null && cannedRef.get().contains("风险点：违反")
                         || cannedRef.get() != null && cannedRef.get().contains("存在风险");
                 String dim = clause.contains("解释权") ? "语义" : (clause.contains("利率") ? "数值" : "无关");
@@ -236,6 +246,18 @@ class ClauseReviewEngineTest {
                         + "\"法律依据\":\"民法典\","
                         + "\"改写建议\":\"" + (risky ? "建议修改" : "") + "\"}";
             }
+
+            /** 只取【待审条款】到【检索到的法规依据】之间的条款正文，避免匹配到说明文字。 */
+            private String extractClause(String p) {
+                int a = p.indexOf("【待审条款】");
+                if (a < 0) {
+                    return "";
+                }
+                int start = a + "【待审条款】".length();
+                int b = p.indexOf("【检索到的法规依据】");
+                return b > start ? p.substring(start, b) : p.substring(start);
+            }
+
         };
         return new ClauseReviewEngine(extractor, rag, new LegalComputeService(new CalcRegistry()), llm, null);
     }
@@ -342,5 +364,41 @@ class ClauseReviewEngineTest {
             }
             assertTrue(hit, "该风险条款确实命中白名单（过宽证据）: " + c);
         }
+    }
+
+    /** 违约金比例畸高规则（民法典585 条 30% 参照线） */
+    @Test
+    void penaltyRatioRule_detectsOverCapRatio() {
+        AtomicInteger calls = new AtomicInteger(0);
+        AtomicReference<String> canned = new AtomicReference<>("{\"维度\":\"数值\",\"是否有风险\":\"否\","
+                + "\"风险描述\":\"\",\"法律依据\":\"\",\"改写建议\":\"\"}");
+        ClauseReviewEngine engine = newEngine(calls, canned);
+
+        // 超过 30% -> 判畸高
+        assertNotNull(engine.penaltyRatioAnomaly("第十条 违约方应按合同总价的百分之五十向守约方支付违约金。"),
+                "50% 应判畸高");
+        assertNotNull(engine.penaltyRatioAnomaly("第八条 违约金按未履行部分的百分之四十计。"),
+                "40% 应判畸高");
+        // 未超 30% -> 不判
+        assertNull(engine.penaltyRatioAnomaly("第七条 违约方应按合同金额的百分之十支付违约金。"),
+                "10% 不应判畸高");
+        assertNull(engine.penaltyRatioAnomaly("第三条 违约金按未履行部分的千分之一支付。"),
+                "千分之一不应判畸高");
+        // 非违约金语境的百分比不应触发（避免把利率当违约金）
+        assertNull(engine.penaltyRatioAnomaly("第八条 借款年利率按百分之二十计息。"),
+                "利率百分比不应触发违约金规则");
+    }
+
+    /** 中文数字解析 */
+    @Test
+    void cnNumber_parsesChineseNumerals() {
+        AtomicInteger calls = new AtomicInteger(0);
+        AtomicReference<String> canned = new AtomicReference<>("");
+        ClauseReviewEngine engine = newEngine(calls, canned);
+        assertEquals(50.0, engine.cnNumber("五十"), 0.001);
+        assertEquals(10.0, engine.cnNumber("十"), 0.001);
+        assertEquals(20.0, engine.cnNumber("二十"), 0.001);
+        assertEquals(40.0, engine.cnNumber("四十"), 0.001);
+        assertEquals(35.0, engine.cnNumber("三十五"), 0.001);
     }
 }

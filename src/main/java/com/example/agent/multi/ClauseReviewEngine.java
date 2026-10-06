@@ -131,6 +131,17 @@ public class ClauseReviewEngine {
     /** 缓存 TTL：7 天 */
     private static final Duration REVIEW_CACHE_TTL = Duration.ofDays(7);
 
+    /**
+     * 违约金比例畸高阈值（占合同/未履行部分的比例）。
+     * 依据《民法典》第 585 条「约定的违约金过分高于造成的损失」，
+     * 司法实践通常以超过损失 30% 作为「过分高于」的参照。
+     */
+    private static final double PENALTY_RATIO_CAP = 0.30;
+
+    /** 抽取「百分之X」比例（返回 0~1 之间的比例值，未抽到返回 null）。 */
+    private static final Pattern PERCENT_PATTERN =
+            Pattern.compile("百分之([零一二三四五六七八九十百0-9]+)");
+
     private static final Pattern CLAUSE_NO =
             Pattern.compile("^(第[零一二三四五六七八九十百千0-9]+条)");
 
@@ -218,7 +229,8 @@ public class ClauseReviewEngine {
 
         // 4) 按审查维度分发：数值类以确定性校验为准，其余维度以 LLM 判定为准
         boolean lowRelevance = isLowRelevance(hits);
-        boolean numericAnomaly = isNumericAnomaly(pp, cr, clauseText);
+        Double penaltyRatio = penaltyRatioAnomaly(clauseText);
+        boolean numericAnomaly = isNumericAnomaly(pp, cr, clauseText) || penaltyRatio != null;
         boolean risky;
         String riskPoint = null;
         String rewriteSuggestion = null;
@@ -230,8 +242,13 @@ public class ClauseReviewEngine {
             // 实测会把合法偏低的违约金误判为过高；数值结论必须由规则给出。
             risky = numericAnomaly;
             if (risky) {
-                riskPoint = j.riskPoint() != null && !j.riskPoint().isBlank()
-                        ? j.riskPoint() : "数值超出法定/合理区间";
+                if (penaltyRatio != null) {
+                    riskPoint = String.format("违约金比例畸高：约定为%.0f%%，超过《民法典》第585条参照的30%%上限",
+                            penaltyRatio * 100);
+                } else {
+                    riskPoint = j.riskPoint() != null && !j.riskPoint().isBlank()
+                            ? j.riskPoint() : "数值超出法定/合理区间";
+                }
                 rewriteSuggestion = j.advice();
             }
         } else if (j.point() == ReviewPoint.NONE) {
@@ -303,7 +320,16 @@ public class ClauseReviewEngine {
                 + "【待审条款】" + clauseText + NL
                 + "【检索到的法规依据】" + (basis.length() == 0 ? "（无）" : basis) + NL
                 + (cr != null && cr.handoff != null ? "【数值校验参考】" + cr.handoff + NL : "")
-                + "注意：条款表述模糊（如「约定期限」「按约定」）也属风险，应指出。";
+                + "判定标准（务必遵守，避免误报）：" + NL
+                + "1) 以下情形**不算风险**，属正常商业条款或法定补充，不判："
+                + "「按约定」「按约定时间/费用/方式」；「有管辖权的人民法院」；"
+                + "「收到货物后N日内」「N个工作日内」等已含起算点与期限的表述；"
+                + "「任何一方违约均应承担相应违约责任」等对等约定。" + NL
+                + "2) 只在存在**明确的不对等、免除、限责、单方解释权、显失公平**时判风险。" + NL
+                + "3) 仅「约定期限」这类**完全无指向**的表述才算表述模糊；"
+                + "已写明具体日期或「N日内」的，不算模糊。" + NL
+                + "4) 合同法允许对未约定事项作法定补充（买卖合同交付时间/地点可按交易习惯确定），"
+                + "不得因未写明这些细节而判风险。";
 
         String raw = toolCallingLlm.chat(prompt, riskModel);
         ClauseJudgement j = parseJudgement(raw);
@@ -481,6 +507,91 @@ public class ClauseReviewEngine {
 
     private boolean isLowRelevance(List<Map<String, Object>> hits) {
         return hits.isEmpty() || topScore(hits) < LOW_SCORE;
+    }
+
+    /**
+     * 违约金比例畸高判定：约定违约金超过合同价/未履行部分的 30% 即属「过分高于损失」。
+     * 确定性规则，不依赖 LLM。
+     *
+     * @return 畸高比例（0~1），未显式给出比例时返回 null
+     */
+    Double penaltyRatioAnomaly(String clauseText) {
+        if (clauseText == null) {
+            return null;
+        }
+        // 必须是违约金语境，避免把「利率百分之X」误当违约金比例
+        if (!clauseText.contains("违约金") && !clauseText.contains("滞纳金")) {
+            return null;
+        }
+        java.util.regex.Matcher m = PERCENT_PATTERN.matcher(clauseText);
+        if (!m.find()) {
+            return null;
+        }
+        Double pct = cnNumber(m.group(1));
+        if (pct == null || pct <= 0) {
+            return null;
+        }
+        double ratio = pct / 100.0;
+        return ratio > PENALTY_RATIO_CAP ? ratio : null;
+    }
+
+    /**
+     * 中文数字转 double。支持「五十」「十」「二十」「三十五」「百」「100」等常见写法，
+     * 正确处理十/百作为位权（三十五 = 35，而非305）。
+     */
+    Double cnNumber(String s) {
+        if (s == null || s.isBlank()) {
+            return null;
+        }
+        int total = 0;      // 已结算的百位及以上
+        int section = 0;    // 当前十位段
+        int digit = 0;      // 累积的数字
+        boolean any = false;
+
+        for (char c : s.toCharArray()) {
+            if (Character.isDigit(c)) {
+                // 阿拉伯数字：整段视为一个值（如 "35" / "100"）
+                String rest = s.substring(s.indexOf(c));
+                try {
+                    return Double.parseDouble(rest);
+                } catch (NumberFormatException e) {
+                    return null;
+                }
+            }
+            int v = switch (c) {
+                case '一', '壹' -> 1;
+                case '二', '两', '贰' -> 2;
+                case '三', '叁' -> 3;
+                case '四', '肆' -> 4;
+                case '五', '伍' -> 5;
+                case '六', '陆' -> 6;
+                case '七', '柒' -> 7;
+                case '八', '捌' -> 8;
+                case '九', '玖' -> 9;
+                default -> -1;
+            };
+            if (v > 0) {
+                digit = v;
+                any = true;
+                continue;
+            }
+            if (c == '十' || c == '拾') {
+                section += (digit == 0 ? 1 : digit) * 10;
+                digit = 0;
+                any = true;
+            } else if (c == '百' || c == '佰') {
+                total += (digit == 0 ? 1 : digit) * 100;
+                section = 0;
+                digit = 0;
+                any = true;
+            } else {
+                return null; // 非法字符
+            }
+        }
+        if (!any) {
+            return null;
+        }
+        return (double) (total + section + digit);
     }
 
     private boolean isNumericAnomaly(ContractParamParser.Params pp,
