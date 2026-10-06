@@ -189,6 +189,24 @@ public class ToolCallingLlm {
     }
 
     /**
+     * 纯对话（无工具），指定模型：供合同审查链路按环节分档选用模型
+     * （如审查点分类用便宜小模型、风险判断用较强模型），实现分级降本。
+     *
+     * @param userPrompt 提示词
+     * @param model      模型名；为空时回退到全局默认模型
+     */
+    public String chat(String userPrompt, String model) {
+        try {
+            List<Message> messages = new ArrayList<>();
+            messages.add(userMsg(userPrompt));
+            return (model == null || model.isBlank()) ? llm(messages) : llm(messages, model);
+        } catch (Exception e) {
+            log.error("纯对话 LLM 异常（指定模型 {}）", model, e);
+            return "";
+        }
+    }
+
+    /**
      * 解析 LLM 输出是否为 JSON 工具调用（兼容 ```json 代码块包裹）。
      */
     private ToolCall parseToolCall(String text) {
@@ -221,9 +239,14 @@ public class ToolCallingLlm {
     }
 
     private String llm(List<Message> messages) throws Exception {
+        return llm(messages, modelName);
+    }
+
+    /** 指定模型调用；model 为空时回退到全局默认模型。 */
+    private String llm(List<Message> messages, String model) throws Exception {
         GenerationParam param = GenerationParam.builder()
                 .apiKey(apiKey)
-                .model(modelName)
+                .model(model == null || model.isBlank() ? modelName : model)
                 .messages(messages)
                 .resultFormat(GenerationParam.ResultFormat.MESSAGE)
                 .temperature(0.0f)

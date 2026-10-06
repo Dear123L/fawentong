@@ -18,7 +18,7 @@ class ClauseReviewerNodeTest {
     @Test
     void storesReportAndForcesNeedsMoreFalse() throws Exception {
         // 桩引擎：直接返回空报告，避免依赖 ES / 真实 LLM
-        ClauseReviewEngine stubEngine = new ClauseReviewEngine(null, null, null, null) {
+        ClauseReviewEngine stubEngine = new ClauseReviewEngine(null, null, null, null, null) {
             @Override
             public ReviewReport review(String contractText, Long kbId, String sourceLabel) {
                 return new ReviewReport(List.of());

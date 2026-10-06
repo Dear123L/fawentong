@@ -7,9 +7,15 @@ import com.example.service.ClauseBlock;
 import com.example.service.DocumentTextExtractorService;
 import com.example.service.RagVectorService;
 import com.example.util.ContractParamParser;
+import com.example.util.PenaltyCalculator;
 import lombok.extern.slf4j.Slf4j;
+import com.alibaba.fastjson2.JSON;
+import com.alibaba.fastjson2.JSONObject;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -25,8 +31,11 @@ import java.util.regex.Pattern;
  * 纯复用既有能力（DocumentTextExtractorService 切分 / RagVectorService 检索 /
  * LegalComputeService 数值校验 / ToolCallingLlm 生成），不触碰 Agent 外的任何模块。</p>
  *
- * <p>风险控制：为控制 LLM 调用量与成本，逐条先走确定性判定（数值异常、低相关），
- * 只有确定性判定命中「风险」的条款才调 LLM——正常条款直接跳过，避免对每个条款都发一次生成请求。</p>
+ * <p>风险控制：审查点驱动（P5）。每条款先做一次轻量分类（便宜模型）判定其审查维度，
+ * 再按维度分发到对应审查路径——数值类走确定性校验、语义类走 LLM 风险判断、
+ * 格式与无关类跳过。另有一条并行的合同级完备性检查，覆盖「缺什么」这类
+ * 整份合同属性（单条款分类无法得出）。分类与风险判定合并为一次 LLM 调用（省一次网络往返），
+ * 结果按条款文本 hash 缓存复用；数值校验为纯计算不缓存。</p>
  */
 @Slf4j
 @Service
@@ -36,6 +45,7 @@ public class ClauseReviewEngine {
     private final RagVectorService ragVectorService;
     private final LegalComputeService legalComputeService;
     private final ToolCallingLlm toolCallingLlm;
+    private final StringRedisTemplate redis;
 
     /** 每条款检索召回条数 */
     private static final int REVIEW_TOP_K = 5;
@@ -48,17 +58,92 @@ public class ClauseReviewEngine {
      */
     private static final double LOAN_DAILY_CAP_PER_MILLE = 0.378;
 
+    // ==================== 审查点驱动（P5） ====================
+    /** 审查点分类模型（轻量分类，便宜小模型即可） */
+    @Value("${dashscope.api.classify-model:qwen-flash}")
+    private String classifyModel;
+    /** 语义风险判断模型（需较强推理能力） */
+    @Value("${dashscope.api.risk-model:qwen-flash}")
+    private String riskModel;
+
+    /** 审查维度：数值类走确定性校验，语义类走 LLM 判断，格式/无关类跳过 */
+    public enum ReviewPoint {
+        /** 涉及金额/利率/违约金等数值，走 LegalComputeService 确定性校验 */
+        NUMERIC("数值"),
+        /** 权利义务失衡、免责、解释权等需语义判断，走 LLM 风险判断 */
+        SEMANTIC("语义"),
+        /** 格式规范类，规则检查 */
+        FORMAT("格式"),
+        /** 无审查要点 */
+        NONE("无关");
+
+        public final String label;
+
+        ReviewPoint(String label) {
+            this.label = label;
+        }
+
+        /** 把 LLM 输出的类别名解析为枚举；无法识别时保守判为语义类（宁可多审不可漏审）。 */
+        public static ReviewPoint parse(String raw) {
+            if (raw == null) {
+                return SEMANTIC;
+            }
+            String s = raw.trim();
+            for (ReviewPoint rp : values()) {
+                if (s.contains(rp.label)) {
+                    return rp;
+                }
+            }
+            return SEMANTIC;
+        }
+    }
+
+    /**
+     * 合同级完备性检查项：缺失即标记风险。
+     * 这是与逐条款审查并行的第二条逻辑——「缺什么」是整份合同的属性，
+     * 无法由单条款的审查点分类得出。
+     */
+    private static final String[][] COMPLETENESS_ITEMS = {
+            {"合同主体", "甲方|乙方|双方|卖方|买方|供方|需方|承租人|出租人|借款人|出借人|委托方|受托方|服务方|客户|公司|个人"},
+            {"合同标的", "标的|货物|商品|产品|服务|技术|设备|材料|作品|劳务|项目"},
+            {"数量", "数量|件数|台|套|份|批|米|平方米|公斤|吨|数量为"},
+            {"交付时间", "交付时间|交货期|履行期限|期限|之日|日内|工作日|前交付|完成时间"},
+            {"价款", "价款|价格|报酬|费用|租金|总价|元|万元|支付|付款"},
+            {"违约责任", "违约|违约金|违约责任|赔偿|定金|违约金"},
+            {"争议解决", "争议|仲裁|诉讼|起诉|管辖|人民法院|仲裁委员会|和解|调解"},
+            {"生效条件", "生效|签字|盖章|签署|成立|之日起"},
+    };
+
+    /**
+     * 触发完备性检查的最小条款数：条款过少时（用户只粘贴单个条款）不检查完整性，
+     * 否则会把「片段缺要素」误判为合同缺陷。
+     */
+    private static final int COMPLETENESS_MIN_CLAUSES = 3;
+
+    /**
+     * 触发完备性风险提示的最少缺失项数：缺 1 项通常属正常书写差异，
+     * 缺 2 项以上才认为合同要素确有缺陷。
+     */
+    private static final int COMPLETENESS_MIN_MISSING = 2;
+
+    /** 条款审查结果缓存 key 前缀（缓存「分类+风险判定」，不含数值校验） */
+    private static final String REVIEW_CACHE_PREFIX = "review:clause:";
+    /** 缓存 TTL：7 天 */
+    private static final Duration REVIEW_CACHE_TTL = Duration.ofDays(7);
+
     private static final Pattern CLAUSE_NO =
             Pattern.compile("^(第[零一二三四五六七八九十百千0-9]+条)");
 
     public ClauseReviewEngine(DocumentTextExtractorService extractor,
                               RagVectorService ragVectorService,
                               LegalComputeService legalComputeService,
-                              ToolCallingLlm toolCallingLlm) {
+                              ToolCallingLlm toolCallingLlm,
+                              StringRedisTemplate redis) {
         this.extractor = extractor;
         this.ragVectorService = ragVectorService;
         this.legalComputeService = legalComputeService;
         this.toolCallingLlm = toolCallingLlm;
+        this.redis = redis;
     }
 
     /**
@@ -92,12 +177,28 @@ public class ClauseReviewEngine {
                         "（审查异常，请人工复核）", null, null));
             }
         }
+        // 合同级完备性检查（与逐条款审查并行）：缺失项以独立条目计入报告
+        List<String> missing = checkCompleteness(contractText, countReviewableClauses(blocks));
+        if (!missing.isEmpty()) {
+            items.add(new ClauseReviewItem(
+                    "【合同完备性】", "整份合同要素检查", List.of(), null,
+                    true, false, false,
+                    "缺少必要要素：" + String.join("、", missing),
+                    "建议补充约定：" + String.join("、", missing),
+                    null));
+        }
         return new ReviewReport(items);
     }
 
     private ClauseReviewItem reviewClause(ClauseBlock block, Long kbId) {
         String clauseText = block.getContent();
         String clauseLabel = clauseLabelOf(block);
+
+        // 0) 引言块（第一条款之前的引言/提问文本）不是合同条款，不参与审查
+        if (isIntroBlock(block)) {
+            return new ClauseReviewItem(clauseLabel, clauseText, List.of(), null,
+                    false, false, false, null, null, null);
+        }
 
         // 1) 检索管辖条款
         List<Map<String, Object>> hits = safeHybridSearch(kbId, clauseText);
@@ -112,25 +213,268 @@ public class ClauseReviewEngine {
         ep.question = clauseText;
         LegalComputeService.ComputeResult cr = legalComputeService.compute(ep, null, clauseText);
 
-        // 3) 确定性风险判定
-        boolean numericAnomaly = isNumericAnomaly(pp, cr);
-        boolean lowRelevance = isLowRelevance(hits);
-        boolean risky = numericAnomaly || lowRelevance;
+        // 3) 分类 + 风险判定合并为一次 LLM 调用（命中缓存则直接复用）
+        ClauseJudgement j = judgeClause(clauseText, hits, cr);
 
-        // 4) 仅风险条款调一次 LLM 生成改写建议
+        // 4) 按审查维度分发：数值类以确定性校验为准，其余维度以 LLM 判定为准
+        boolean lowRelevance = isLowRelevance(hits);
+        boolean numericAnomaly = isNumericAnomaly(pp, cr, clauseText);
+        boolean risky;
         String riskPoint = null;
         String rewriteSuggestion = null;
         String clauseReplacement = null;
-        if (risky) {
-            String llmResp = callLlmForRewrite(clauseText, hits, cr);
-            riskPoint = extractSection(llmResp, "风险点");
-            rewriteSuggestion = extractSection(llmResp, "改写建议");
-            clauseReplacement = extractSection(llmResp, "替换条款");
+
+        if (j.point() == ReviewPoint.NUMERIC) {
+            // 数值类：**只以确定性校验为准**，LLM 不参与风险判定。
+            // 原因：小模型对「千分之一 vs 百分之三十」这类比例换算不可靠，
+            // 实测会把合法偏低的违约金误判为过高；数值结论必须由规则给出。
+            risky = numericAnomaly;
+            if (risky) {
+                riskPoint = j.riskPoint() != null && !j.riskPoint().isBlank()
+                        ? j.riskPoint() : "数值超出法定/合理区间";
+                rewriteSuggestion = j.advice();
+            }
+        } else if (j.point() == ReviewPoint.NONE) {
+            // 无关类：不做语义风险判断，仅保留确定性数值校验
+            risky = numericAnomaly;
+        } else {
+            // 语义类 / 格式类：以 LLM 判定为主；无检索依据时直接视为风险
+            risky = j.risky() || lowRelevance;
+            if (risky) {
+                riskPoint = j.riskPoint();
+                rewriteSuggestion = j.advice();
+                clauseReplacement = j.advice();
+            }
         }
+
         return new ClauseReviewItem(clauseLabel, clauseText, hits,
                 cr != null ? cr.handoff : null,
                 risky, numericAnomaly, lowRelevance,
                 riskPoint, rewriteSuggestion, clauseReplacement);
+    }
+
+    /**
+     * 审查点分类：白名单优先（省一次调用并防误判），否则用轻量模型做短 prompt 分类。
+     */
+    /**
+     * 条款审查的 LLM 判定结果（分类与风险判定合并为一次调用产出）。
+     *
+     * @param point      审查维度
+     * @param risky      是否存在法律风险
+     * @param riskPoint  风险描述
+     * @param basis      法律依据
+     * @param advice     改写建议
+     */
+    public record ClauseJudgement(ReviewPoint point, boolean risky, String riskPoint,
+                                  String basis, String advice) {
+    }
+
+    /**
+     * 分类 + 风险判定合并为一次 LLM 调用：一次网络往返同时产出审查维度、
+     * 是否风险、风险描述、法律依据与改写建议，省掉先分类再判定的第二次调用。
+     * 结果按条款文本 hash 缓存（TTL 7 天），同文本重复审查直接复用。
+     */
+    ClauseJudgement judgeClause(String clauseText, List<Map<String, Object>> hits,
+                                LegalComputeService.ComputeResult cr) {
+        String cacheKey = REVIEW_CACHE_PREFIX + sha256Hex(clauseText);
+        ClauseJudgement cached = readCache(cacheKey);
+        if (cached != null) {
+            return cached;
+        }
+        StringBuilder basis = new StringBuilder();
+        if (hits != null) {
+            for (Map<String, Object> h : hits) {
+                if (basis.length() > 0) {
+                    basis.append("; ");
+                }
+                basis.append(h.get("clauseId"));
+            }
+        }
+        String NL = "\n";
+        String prompt = "你是合同审查律师。判断下面条款并一次性输出结论。" + NL
+                + "严格只输出如下 JSON，不要任何额外文字：" + NL
+                + "{\"维度\":\"数值|语义|格式|无关\","
+                + "\"是否有风险\":\"是|否\","
+                + "\"风险描述\":\"一句话，无风险填空字符串\","
+                + "\"法律依据\":\"引用到的法规条款，无则填空字符串\","
+                + "\"改写建议\":\"一句话，无风险填空字符串\"}" + NL
+                + "维度含义：数值=涉及金额/利率/违约金计算；语义=权利义务失衡/免责/解释权/单方权利；"
+                + "格式=日期编号表述规范；无关=无审查要点。" + NL
+                + "【待审条款】" + clauseText + NL
+                + "【检索到的法规依据】" + (basis.length() == 0 ? "（无）" : basis) + NL
+                + (cr != null && cr.handoff != null ? "【数值校验参考】" + cr.handoff + NL : "")
+                + "注意：条款表述模糊（如「约定期限」「按约定」）也属风险，应指出。";
+
+        String raw = toolCallingLlm.chat(prompt, riskModel);
+        ClauseJudgement j = parseJudgement(raw);
+        writeCache(cacheKey, j);
+        return j;
+    }
+
+    /** 解析合并调用的 JSON 输出；解析失败保守按语义类 + 风险处理。 */
+    private ClauseJudgement parseJudgement(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return new ClauseJudgement(ReviewPoint.SEMANTIC, true, "（模型未返回结论）", "", "");
+        }
+        String t = raw.trim();
+        int first = t.indexOf('{');
+        int last = t.lastIndexOf('}');
+        if (first >= 0 && last > first) {
+            t = t.substring(first, last + 1);
+        }
+        try {
+            JSONObject o = JSON.parseObject(t);
+            if (o != null) {
+                ReviewPoint point = ReviewPoint.parse(o.getString("维度"));
+                String riskFlag = o.getString("是否有风险");
+                boolean risky = riskFlag != null && riskFlag.startsWith("是");
+                // 维度与风险结论一致性兜底：语义类必须给出风险描述才算有风险
+                String riskPoint = o.getString("风险描述");
+                if (risky && (riskPoint == null || riskPoint.isBlank())) {
+                    riskPoint = "（模型未给出风险描述）";
+                }
+                return new ClauseJudgement(point, risky,
+                        riskPoint, o.getString("法律依据"), o.getString("改写建议"));
+            }
+        } catch (Exception e) {
+            log.warn("合并审查判定解析失败，回退语义类：{}", e.getMessage());
+        }
+        return new ClauseJudgement(ReviewPoint.SEMANTIC, true, "（结论解析失败）", "", "");
+    }
+
+    /** 条款文本 SHA-256，作为缓存 key。 */
+    private String sha256Hex(String text) {
+        try {
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] d = md.digest(text.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            for (byte b : d) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            return Integer.toHexString(text.hashCode());
+        }
+    }
+
+    /** 读缓存；Redis 不可用时静默降级为未命中。 */
+    private ClauseJudgement readCache(String key) {
+        if (redis == null) {
+            return null;
+        }
+        try {
+            String v = redis.opsForValue().get(key);
+            if (v == null || v.isBlank()) {
+                return null;
+            }
+            JSONObject o = JSON.parseObject(v);
+            return new ClauseJudgement(
+                    ReviewPoint.valueOf(o.getString("point")),
+                    o.getBooleanValue("risky"),
+                    o.getString("riskPoint"),
+                    o.getString("basis"),
+                    o.getString("advice"));
+        } catch (Exception e) {
+            log.debug("读取审查缓存失败，降级为未命中: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /** 写缓存；失败不影响主流程。 */
+    private void writeCache(String key, ClauseJudgement j) {
+        if (redis == null || j == null) {
+            return;
+        }
+        try {
+            JSONObject o = new JSONObject();
+            o.put("point", j.point().name());
+            o.put("risky", j.risky());
+            o.put("riskPoint", j.riskPoint());
+            o.put("basis", j.basis());
+            o.put("advice", j.advice());
+            redis.opsForValue().set(key, o.toJSONString(), REVIEW_CACHE_TTL);
+        } catch (Exception e) {
+            log.debug("写入审查缓存失败: {}", e.getMessage());
+        }
+    }
+
+    ReviewPoint classifyReviewPoint(String clauseText) {
+        String prompt = "判断条款属于哪类审查维度，只输出类别名之一（不要解释）：\n"
+                + "数值=涉及金额/利率/违约金/赔偿金计算\n"
+                + "语义=权利义务失衡/免责/解释权/单方权利/义务不对等\n"
+                + "格式=日期/编号/表述规范\n"
+                + "无关=无审查要点\n\n"
+                + "条款：" + clauseText;
+        String raw = toolCallingLlm.chat(prompt, classifyModel);
+        return ReviewPoint.parse(raw);
+    }
+
+    /**
+     * 语义风险判定：LLM 必须明确指出风险才算风险。
+     * 明确说无风险/未发现风险则判无风险；无法判断时保守判为风险（宁可误报不可漏报）。
+     */
+    boolean llmSaysRisk(String llmResp) {
+        if (llmResp == null || llmResp.isBlank()) {
+            return true;
+        }
+        String s = llmResp.trim();
+        // 明确否定 → 无风险
+        for (String neg : new String[]{"未发现明显风险", "无明显风险", "不存在风险", "没有风险", "无风险"}) {
+            if (s.contains(neg)) {
+                return false;
+            }
+        }
+        // 明确指出风险点 → 风险
+        return s.contains("风险点") || s.contains("违反") || s.contains("不合理")
+                || s.contains("显失公平") || s.contains("无效") || s.contains("应予调整")
+                || s.contains("建议修改") || s.contains("存在风险");
+    }
+
+    /**
+     * 合同级完备性检查：返回缺失项名称列表（与逐条款审查并行的第二条逻辑）。
+     *
+     * <p>仅对条款数达到 {@link #COMPLETENESS_MIN_CLAUSES} 的合同生效——用户可能只粘贴
+     * 单个条款要求审查，此时要求「必须包含主体/标的/交付时间」属于误报。条款数过少时
+     * 不产出缺失提示，把判断交还给条款级语义审查。</p>
+     */
+    List<String> checkCompleteness(String contractText, int clauseCount) {
+        List<String> missing = new ArrayList<>();
+        if (contractText == null || contractText.isBlank()) {
+            return missing;
+        }
+        if (clauseCount < COMPLETENESS_MIN_CLAUSES) {
+            return missing;
+        }
+        for (String[] item : COMPLETENESS_ITEMS) {
+            String name = item[0];
+            String pattern = item[1];
+            if (!Pattern.compile(pattern).matcher(contractText).find()) {
+                missing.add(name);
+            }
+        }
+        // 轻微缺失不作为风险：缺失项占比达阈值才提示，避免把要素基本齐全的合同
+        // 因为个别通用项（如生效条件）缺失而误判。
+        if (missing.size() < COMPLETENESS_MIN_MISSING) {
+            return new ArrayList<>();
+        }
+        return missing;
+    }
+
+    /** 引言块判定：切分器把首条款前的文本标记为 canonicalId 以「-引言」结尾。 */
+    private boolean isIntroBlock(ClauseBlock block) {
+        String id = block.getCanonicalId();
+        return id != null && id.endsWith("-引言");
+    }
+
+    /** 统计真正参与审查的条款数（排除引言块）。 */
+    private int countReviewableClauses(List<ClauseBlock> blocks) {
+        int n = 0;
+        for (ClauseBlock b : blocks) {
+            if (!isIntroBlock(b)) {
+                n++;
+            }
+        }
+        return n;
     }
 
     // ---- 风险判定 ----
@@ -140,13 +484,17 @@ public class ClauseReviewEngine {
     }
 
     private boolean isNumericAnomaly(ContractParamParser.Params pp,
-                                     LegalComputeService.ComputeResult cr) {
+                                     LegalComputeService.ComputeResult cr,
+                                     String clauseText) {
         // 借贷利率超过 4×LPR 法定上限：确定性强、无需 LLM
-        return cr != null
-                && cr.calcType == CalcType.LOAN_INTEREST
-                && pp.rateSpecified
-                && pp.ratePerMille != null
-                && pp.ratePerMille > LOAN_DAILY_CAP_PER_MILLE;
+        if (cr == null || cr.calcType != CalcType.LOAN_INTEREST
+                || !pp.rateSpecified || pp.ratePerMille == null) {
+            return false;
+        }
+        // 归一化：解析器对「日千分之五」可能抽出 5.0（实为 0.5‰，即 10× 误抽），
+        // 直接与上限比较会把合法利率误判为超限，也会让超限倍数失真。
+        double rate = PenaltyCalculator.normalizeDailyRate(pp.ratePerMille, clauseText);
+        return rate > LOAN_DAILY_CAP_PER_MILLE;
     }
 
     private double topScore(List<Map<String, Object>> hits) {

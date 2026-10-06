@@ -61,7 +61,7 @@ class MultiAgentGraphRoutingTest {
 
     /** 审查引擎桩：返回空报告，仅用于验证图路由。 */
     static ClauseReviewEngine stubEngine() {
-        return new ClauseReviewEngine(null, null, null, null) {
+        return new ClauseReviewEngine(null, null, null, null, null) {
             @Override
             public ClauseReviewEngine.ReviewReport review(String t, Long kb, String label) {
                 return new ClauseReviewEngine.ReviewReport(List.of());

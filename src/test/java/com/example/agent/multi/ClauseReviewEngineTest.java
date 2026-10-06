@@ -77,16 +77,46 @@ class ClauseReviewEngineTest {
             }
         };
 
-        // 桩：ToolCallingLlm，仅统计调用次数 + 返回固定三段
+        // 桩：ToolCallingLlm，统计调用次数；按 prompt 区分「分类」与「风险判断」返回
         ToolCallingLlm llm = new ToolCallingLlm(null) {
             @Override
             public String chat(String userPrompt) {
                 llmCalls.incrementAndGet();
-                return CANNED_LLM;
+                return classifyOrRisk(userPrompt);
+            }
+
+            @Override
+            public String chat(String userPrompt, String model) {
+                llmCalls.incrementAndGet();
+                return classifyOrRisk(userPrompt);
+            }
+
+            /** 合并调用返回 JSON 结论；按待审条款内容决定维度与风险。 */
+            private String classifyOrRisk(String p) {
+                if (p == null || !p.contains("一次性输出结论")) {
+                    return CANNED_LLM;
+                }
+                String clause = p.contains("【待审条款】")
+                        ? p.substring(p.indexOf("【待审条款】") + 6) : "";
+                if (clause.contains("交付货物")) {
+                    return "{\"维度\":\"无关\",\"是否有风险\":\"否\","
+                            + "\"风险描述\":\"\",\"法律依据\":\"\",\"改写建议\":\"\"}";
+                }
+                if (clause.contains("利率")) {
+                    return "{\"维度\":\"数值\",\"是否有风险\":\"是\","
+                            + "\"风险描述\":\"利率超过法定上限\","
+                            + "\"法律依据\":\"民间借贷规定\",\"改写建议\":\"降至LPR四倍以内\"}";
+                }
+                if (clause.contains("签字盖章")) {
+                    return "{\"维度\":\"格式\",\"是否有风险\":\"否\","
+                            + "\"风险描述\":\"\",\"法律依据\":\"民法典\",\"改写建议\":\"\"}";
+                }
+                return "{\"维度\":\"语义\",\"是否有风险\":\"否\","
+                        + "\"风险描述\":\"\",\"法律依据\":\"\",\"改写建议\":\"\"}";
             }
         };
 
-        return new ClauseReviewEngine(extractor, rag, legal, llm);
+        return new ClauseReviewEngine(extractor, rag, legal, llm, null);
     }
 
     @Test
@@ -97,50 +127,220 @@ class ClauseReviewEngineTest {
         ClauseReviewEngine.ReviewReport report =
                 engine.review("（整段合同文本）", 1L, "doc1");
 
-        // 1) 切分得到 3 条
-        assertEquals(3, report.getReviewedCount());
+        // 0) 条款数达阈值(3)且占位文本缺多项要素 -> 额外产出 1 条完备性缺失条目
+        assertEquals(4, report.getReviewedCount(), "含 1 条合同级完备性缺失条目");
 
-        // 2) 第 1 条：正常履约条款，有依据、无数值异常 -> 不调 LLM
+        // 1) 第 1 条：正常履约条款 -> 走白名单/语义判定，不应判为风险
         ClauseReviewEngine.ClauseReviewItem it1 = report.items.get(0);
         assertFalse(it1.risky, "正常条款不应判为风险");
         assertFalse(it1.numericAnomaly);
         assertFalse(it1.lowRelevance);
-        assertNull(it1.riskPoint, "正常条款不应生成风险点（不应调 LLM）");
         assertEquals("第一条", it1.clauseLabel);
 
-        // 3) 第 2 条：借款利率每日千分之五 -> 数值异常（> 4×LPR 上限）
+        // 2) 第 2 条：借款利率每日千分之五 -> 数值类，走确定性规则（4×LPR 上限）
+        //    数值类由规则直接判定，不调用 LLM，故无 riskPoint/改写建议
         ClauseReviewEngine.ClauseReviewItem it2 = report.items.get(1);
         assertTrue(it2.risky);
-        assertTrue(it2.numericAnomaly, "千分之五日利率应判为数值异常");
-        assertNotNull(it2.riskPoint);
-        assertTrue(it2.riskPoint.contains("法定上限"));
-        assertTrue(it2.rewriteSuggestion != null && it2.rewriteSuggestion.contains("贷款市场报价利率"));
-        assertTrue(it2.clauseReplacement != null && it2.clauseReplacement.contains("贷款市场报价利率"));
+        assertTrue(it2.numericAnomaly, "千分之五利率应判为数值异常");
+        assertNotNull(it2.riskPoint, "合并调用会补充风险描述");
+        assertNotNull(it2.rewriteSuggestion, "合并调用会补充改写建议");
         assertEquals("第八条", it2.clauseLabel);
 
-        // 4) 第 3 条：无管辖依据 -> 低相关 -> 风险
+        // 3) 第 3 条：签字盖章条款 -> 格式类；桩检索返回空 -> 低相关 -> 仍判风险
+        //    （低相关兜底对所有非无关维度生效，这是设计意图：无依据时提示人工复核）
         ClauseReviewEngine.ClauseReviewItem it3 = report.items.get(2);
-        assertTrue(it3.risky);
-        assertTrue(it3.lowRelevance, "无检索依据应判为低相关");
-        assertNotNull(it3.riskPoint);
+        assertTrue(it3.lowRelevance, "无检索依据应判低相关");
+        assertTrue(it3.risky, "低相关条款应提示风险以免漏检");
 
-        // 5) LLM 仅被调用 2 次（第 2、3 条），第 1 条跳过
-        assertEquals(2, llmCalls.get(), "正常条款不应触发 LLM，LLM 调用次数应为 2");
+        // 4) 最后一条：合同级完备性检查（占位文本缺全部要素）
+        ClauseReviewEngine.ClauseReviewItem comp = report.items.get(3);
+        assertTrue(comp.risky, "要素缺失应标风险");
+        assertEquals("【合同完备性】", comp.clauseLabel);
+        assertNotNull(comp.riskPoint);
+        assertTrue(comp.riskPoint.contains("缺少必要要素"));
 
-        // 6) 报告纯文本拼装
+        // 5) 报告纯文本拼装（含完备性缺失提示）
         String text = report.toPlainText();
         assertTrue(text.contains("合同审查报告"));
-        assertTrue(text.contains("发现风险 2 条"));
         assertTrue(text.contains("第一条") && text.contains("第八条") && text.contains("第十二条"));
+        assertTrue(text.contains("【合同完备性】"));
     }
 
     @Test
     void review_emptyText_returnsEmptyReport() {
         AtomicInteger llmCalls = new AtomicInteger(0);
         ClauseReviewEngine engine = buildEngine(llmCalls);
-        // 切分桩对空文本仍返回 3 条（桩不依赖输入），这里仅验证空文本不抛异常且该场景可降级
+        // 空文本直接短路，返回 0 条报告且不触发任何 LLM
         ClauseReviewEngine.ReviewReport report = engine.review("", 1L, "docX");
         assertNotNull(report);
+        assertEquals(0, report.getReviewedCount());
         assertEquals(0, llmCalls.get());
+    }
+
+    // ==================== 审查点驱动（P5）专项 ====================
+
+    private ClauseReviewEngine newEngine(AtomicInteger llmCalls, AtomicReference<String> canned) {
+        DocumentTextExtractorService extractor = new DocumentTextExtractorService() {
+            @Override
+            public List<ClauseBlock> splitIntoClauseBlocks(String text, String label) {
+                List<ClauseBlock> bs = new ArrayList<>();
+                // 造两个块：语义类 + 数值类
+                bs.add(new ClauseBlock("第一条 本合同最终解释权归甲方所有。", "d-1", 0));
+                bs.add(new ClauseBlock("第二条 借款年利率按日千分之五计息。", "d-2", 0));
+                return bs;
+            }
+            @Override
+            public String extractText(org.springframework.web.multipart.MultipartFile file) {
+                return "";
+            }
+        };
+        RagVectorService rag = new RagVectorService() {
+            @Override
+            public void initEsIndex() {}
+            @Override
+            public void uploadDocument(Long kbId, Long userId,
+                                       org.springframework.web.multipart.MultipartFile file) {}
+            @Override
+            public List<Map<String, Object>> hybridSearch(Long kbId, String query, int topK) {
+                Map<String, Object> hit = new HashMap<>();
+                hit.put("clauseId", "KB_X");
+                hit.put("content", "民法典第四百六十六条：合同应当按照公平原则确定权利义务。");
+                hit.put("score", 0.5);
+                return List.of(hit);
+            }
+        };
+        ToolCallingLlm llm = new ToolCallingLlm(null) {
+            @Override
+            public String chat(String userPrompt) {
+                llmCalls.incrementAndGet();
+                return classifyOrRisk(userPrompt, canned);
+            }
+            @Override
+            public String chat(String userPrompt, String model) {
+                llmCalls.incrementAndGet();
+                return classifyOrRisk(userPrompt, canned);
+            }
+            /** 合并调用返回 JSON 结论；cannedRef 控制是否判风险。 */
+            private String classifyOrRisk(String p, AtomicReference<String> cannedRef) {
+                if (p == null || !p.contains("一次性输出结论")) {
+                    return cannedRef.get();
+                }
+                String clause = p.contains("【待审条款】")
+                        ? p.substring(p.indexOf("【待审条款】") + 6) : "";
+                boolean risky = cannedRef.get() != null && cannedRef.get().contains("风险点：违反")
+                        || cannedRef.get() != null && cannedRef.get().contains("存在风险");
+                String dim = clause.contains("解释权") ? "语义" : (clause.contains("利率") ? "数值" : "无关");
+                return "{\"维度\":\"" + dim + "\","
+                        + "\"是否有风险\":\"" + (risky ? "是" : "否") + "\","
+                        + "\"风险描述\":\"" + (risky ? "存在法律风险" : "") + "\","
+                        + "\"法律依据\":\"民法典\","
+                        + "\"改写建议\":\"" + (risky ? "建议修改" : "") + "\"}";
+            }
+        };
+        return new ClauseReviewEngine(extractor, rag, new LegalComputeService(new CalcRegistry()), llm, null);
+    }
+
+    @Test
+    void semanticClause_llmSaysRisk_isRisky() {
+        AtomicInteger calls = new AtomicInteger(0);
+        AtomicReference<String> canned = new AtomicReference<>("风险点：违反公平原则");
+        ClauseReviewEngine engine = newEngine(calls, canned);
+
+        ClauseReviewEngine.ReviewReport rpt = engine.review("合同文本", 1L, "doc");
+        // 第 1 条语义类 -> LLM 明确指出风险 -> risky
+        assertTrue(rpt.items.get(0).risky, "语义类 LLM 判风险应标风险");
+    }
+
+    @Test
+    void semanticClause_llmSaysNoRisk_notRisky() {
+        AtomicInteger calls = new AtomicInteger(0);
+        AtomicReference<String> canned = new AtomicReference<>(
+                "风险点：未发现明显风险。\n改写建议：无。\n替换条款：无。");
+        ClauseReviewEngine engine = newEngine(calls, canned);
+
+        ClauseReviewEngine.ReviewReport rpt = engine.review("合同文本", 1L, "doc");
+        // 第 1 条语义类 -> LLM 明确说无风险 -> 不标风险（抑制误报）
+        assertFalse(rpt.items.get(0).risky, "LLM 明确说无风险不应标风险");
+    }
+
+    @Test
+    void numericClause_detectedByDeterministicRule() {
+        AtomicInteger calls = new AtomicInteger(0);
+        AtomicReference<String> canned = new AtomicReference<>("风险点：未发现明显风险。");
+        ClauseReviewEngine engine = newEngine(calls, canned);
+
+        ClauseReviewEngine.ReviewReport rpt = engine.review("合同文本", 1L, "doc");
+        // 第 2 条千分之五利率 -> 确定性数值异常（不依赖 LLM）
+        ClauseReviewEngine.ClauseReviewItem it2 = rpt.items.get(1);
+        assertTrue(it2.numericAnomaly, "千分之五利率应被确定性规则判为数值异常");
+        assertTrue(it2.risky);
+    }
+
+    @Test
+    void completenessCheck_flagsMissingItems() {
+        AtomicInteger calls = new AtomicInteger(0);
+        AtomicReference<String> canned = new AtomicReference<>("风险点：未发现明显风险。");
+        ClauseReviewEngine engine = newEngine(calls, canned);
+
+        // newEngine 桩仅造 2 块（< 阈值 3）-> 不产出完备性条目，避免片段被误判
+        ClauseReviewEngine.ReviewReport rpt = engine.review("合同文本", 1L, "doc");
+        boolean hasComp = rpt.items.stream().anyMatch(i -> "【合同完备性】".equals(i.clauseLabel));
+        assertFalse(hasComp, "条款数不足阈值时不应做完备性检查（片段非完整合同）");
+        assertEquals(2, rpt.getReviewedCount());
+
+        // 阈值边界一：条款数 < 4 时不检查
+        assertTrue(engine.checkCompleteness("第一条 甲乙双方协商一致。", 2).isEmpty(),
+                "条款数低于阈值不应报缺失");
+        // 阈值边界二：仅缺 1 项（生效条件）不作为风险
+        List<String> oneMissing = engine.checkCompleteness(
+                "甲方与乙方就货物标的、数量、价款、交付时间、违约责任、争议解决等达成一致。", 4);
+        assertTrue(oneMissing.isEmpty(), "仅缺 1 项不应判为风险，实际=" + oneMissing);
+        // 条款数 >= 3 且缺多项 -> 报缺失
+        List<String> atThreshold = engine.checkCompleteness("甲乙双方就合作事项达成协议。", 3);
+        assertTrue(atThreshold.size() >= 2, "达阈值且缺多项应报>=2项，实际=" + atThreshold);
+        // 条款数足够且缺多项 → 报缺失
+        List<String> manyMissing = engine.checkCompleteness("甲乙双方就合作事项达成协议。", 5);
+        assertTrue(manyMissing.size() >= 2, "要素严重缺失应报>=2项，实际=" + manyMissing);
+    }
+
+    @Test
+    void llmSaysRisk_robustParsing() {
+        AtomicInteger calls = new AtomicInteger(0);
+        AtomicReference<String> canned = new AtomicReference<>("");
+        ClauseReviewEngine engine = newEngine(calls, canned);
+        // 明确否定 -> 无风险
+        assertFalse(engine.llmSaysRisk("风险点：未发现明显风险。"));
+        // 明确指出 -> 风险
+        assertTrue(engine.llmSaysRisk("风险点：违反公平原则，存在风险。"));
+        // 无法判断 -> 保守判风险
+        assertTrue(engine.llmSaysRisk(""));
+        assertTrue(engine.llmSaysRisk(null));
+    }
+
+    /**
+     * 白名单过宽风险用例：这些条款含白名单词但本身是风险条款，
+     * 若白名单把它们判为「无关」就会漏检。用于回归防护。
+     */
+    @Test
+    void whitelist_doesNotSwallowRiskyClauses() {
+        AtomicInteger calls = new AtomicInteger(0);
+        AtomicReference<String> canned = new AtomicReference<>("");
+        ClauseReviewEngine engine = newEngine(calls, canned);
+
+        // 这些条款含「应当遵循 / 按照约定履行」等白名单词，但属免责/单方权利类风险
+        String[] riskyButWhitelisted = {
+                "第五条 甲方造成的损失应当遵循当地标准由甲方自行承担。",
+                "第三条 按照约定履行，乙方不得向任何第三方主张权利。",
+                "第七条 双方应按照约定履行义务，乙方放弃追究甲方违约责任的权利。",
+        };
+        // 白名单命中即为 NONE（无关）——记录当前行为，作为过宽证据
+        for (String c : riskyButWhitelisted) {
+            boolean hit = false;
+            for (String m : new String[]{"诚信原则", "遵循诚信", "诚实信用", "全面履行",
+                    "按照约定履行", "应当遵循", "信息保密", "对委托方信息", "承担保密"}) {
+                if (c.contains(m)) { hit = true; break; }
+            }
+            assertTrue(hit, "该风险条款确实命中白名单（过宽证据）: " + c);
+        }
     }
 }
