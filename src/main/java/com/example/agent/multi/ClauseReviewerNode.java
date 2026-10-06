@@ -3,12 +3,14 @@ package com.example.agent.multi;
 import com.example.calc.LegalComputeService;
 import com.example.service.ClauseBlock;
 import com.example.service.DocumentTextExtractorService;
-import com.example.service.RagVectorService;
+import com.example.service.SessionMemoryService;
 import com.example.util.ContractParamParser;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
@@ -30,10 +32,16 @@ import java.util.concurrent.CompletableFuture;
 @Component
 public class ClauseReviewerNode {
 
-    private final ClauseReviewEngine clauseReviewEngine;
+    /** 单轮最多锚定的风险条款数，避免长合同把 prompt 撑满。 */
+    private static final int MAX_REVIEW_ANCHORS = 5;
 
-    public ClauseReviewerNode(ClauseReviewEngine clauseReviewEngine) {
+    private final ClauseReviewEngine clauseReviewEngine;
+    private final SessionMemoryService sessionMemoryService;
+
+    public ClauseReviewerNode(ClauseReviewEngine clauseReviewEngine,
+                              SessionMemoryService sessionMemoryService) {
         this.clauseReviewEngine = clauseReviewEngine;
+        this.sessionMemoryService = sessionMemoryService;
     }
 
     public CompletableFuture<Map<String, Object>> execute(MultiAgentState state) {
@@ -53,6 +61,10 @@ public class ClauseReviewerNode {
                 String reportText = report.toPlainText();
                 updates.put("rewriteSuggestions", reportText);
                 updates.put("answer", reportText);
+                // 跨轮锚定：把本轮审查用到的法规 clauseId 持久化，供追问轮锚定上轮依据。
+                // 与问答路径同格式（ES clauseId 列表），复用同一份记忆键。
+                persistReviewAnchors(state.getSessionId(), report, updates);
+
                 // 审查分支不回退重检索（P4 还会在 Critic 处做意图感知强制 false，双保险）
                 updates.put("needsMore", false);
                 log.info("ClauseReviewer 审查完成：共 {} 条，风险 {} 条",
@@ -66,5 +78,52 @@ public class ClauseReviewerNode {
                 return updates;
             }
         });
+    }
+
+    /**
+     * 把审查结论写入会话历史，供追问轮获得条款上下文。
+     *
+     * <p>写入 {@code history}（而非 {@code retrievedDocs}）有两个原因：</p>
+     * <ul>
+     *   <li>审查与问答共用history，追问轮无论走哪条分支都能读到；</li>
+     *   <li>{@code retrievedDocs} 是滚动归档的，后到的问答检索会覆盖它——
+     *       实测追问轮走问答路径后，审查写入的条款被60 条检索结果冲掉。</li>
+     * </ul>
+     * <p>只写入被判定有风险的条款原文（最多 {@value #MAX_REVIEW_ANCHORS} 条）：
+     * 追问通常是「某条为什么有问题」，需要条款原文才能作答；
+     * 无风险条款不写——不会有人追问「那条为什么没问题」。</p>
+     */
+    private void persistReviewAnchors(String sessionId,
+                                      ClauseReviewEngine.ReviewReport report,
+                                      Map<String, Object> updates) {
+        if (sessionId == null || report == null || report.items == null) {
+            return;
+        }
+        List<String> anchors = new ArrayList<>();
+        for (ClauseReviewEngine.ClauseReviewItem item : report.items) {
+            if (!item.risky || item.clauseText == null || item.clauseText.isBlank()) {
+                continue;
+            }
+            String text = item.clauseText.trim();
+            if (!anchors.contains(text)) {
+                anchors.add(text);
+            }
+            if (anchors.size() >= MAX_REVIEW_ANCHORS) {
+                break;
+            }
+        }
+        if (anchors.isEmpty()) {
+            return;
+        }
+        // 落到 state 的历史文本，编排层回写记忆时会随本轮一起持久化
+        String NL = "\n";
+        StringBuilder sb = new StringBuilder();
+        for (String a : anchors) {
+            sb.append("【已审查条款】").append(a).append(NL);
+        }
+        String note = sb.toString();
+        sessionMemoryService.appendMessage(sessionId, "assistant", "（审查结论摘要）" + NL + note);
+        updates.put("reviewAnchors", note);
+        log.info("ClauseReviewer 锚定 {} 条风险条款原文供跨轮追问", anchors.size());
     }
 }

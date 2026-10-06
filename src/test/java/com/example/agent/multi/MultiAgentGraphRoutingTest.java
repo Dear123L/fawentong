@@ -71,7 +71,7 @@ class MultiAgentGraphRoutingTest {
 
     private MultiAgentGraph buildGraph() throws Exception {
         MultiAgentGraph g = new MultiAgentGraph(
-                new StubScope(), new StubRetriever(), new ClauseReviewerNode(stubEngine()), new StubCritic());
+                new StubScope(), new StubRetriever(), new ClauseReviewerNode(stubEngine(), null), new StubCritic());
         g.init();
         return g;
     }
