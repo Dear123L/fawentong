@@ -111,4 +111,21 @@ class MultiAgentGraphRoutingTest {
         assertTrue((Boolean) result.data().get("criticRan"), "retriever 后应进入 critic");
         assertFalse(result.data().containsKey("rewriteSuggestions"), "retrieve 意图不应触发审查");
     }
+
+    /** 审查意图下needsMore 必须恒为 false：报告已定稿，不该触发重审回退。 */
+    @Test
+    void reviewIntent_neverRequestsFallback() throws Exception {
+        MultiAgentGraph g = buildGraph();
+
+        Map<String, Object> input = new HashMap<>();
+        input.put("question", "审查以下合同：第一条 甲方应按约定交货。");
+        input.put("intent", "review");
+        input.put("rejected", false);
+        input.put("kbId", 1L);
+
+        MultiAgentState result = g.execute(input);
+
+        assertFalse((Boolean) result.data().get("needsMore"),
+                "审查意图下needsMore 必须为 false（双重保险：CriticNode 与 ClauseReviewerNode 各置一次）");
+    }
 }

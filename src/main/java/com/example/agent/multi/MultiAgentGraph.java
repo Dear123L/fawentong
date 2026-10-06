@@ -82,17 +82,25 @@ public class MultiAgentGraph {
         // 审查分支：ClauseReviewer 产出审查报告后进入评审；审查不需要回退重检索（needsMore 强制 false）。
         graph.addEdge("clauseReviewer", "critic");
 
-        // 评审后路由：判定不足且未达上限 -> 回退重检索（重规划）；否则结束
+        // 评审后路由：判定不足且未达上限 -> 回退重规划；否则结束。
+        // 回退目标按意图选择：审查系意图回到 ClauseReviewer 重审，其余回 Retriever 重检索。
+        // 当前 Critic 对审查意图强制 needsMore=false，此分支是为意图扩展预留的——
+        // 若将来出现需要重审的审查子任务（如"只审第五条"），无需再改路由。
         graph.addConditionalEdges("critic",
                 (state) -> CompletableFuture.supplyAsync(() -> {
                     if (Boolean.TRUE.equals(state.getNeedsMore())) {
+                        String intent = state.getIntent();
+                        if ("review".equals(intent)) {
+                            log.info("评审路由 -> clauseReviewer（审查意图，重审）");
+                            return "clauseReviewer";
+                        }
                         log.info("评审路由 -> retriever（重规划重检索）");
                         return "retriever";
                     }
                     log.info("评审路由 -> END");
                     return "end";
                 }),
-                Map.of("retriever", "retriever", "end", END)
+                Map.of("retriever", "retriever", "clauseReviewer", "clauseReviewer", "end", END)
         );
 
         compiledGraph = graph.compile();
