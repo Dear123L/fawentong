@@ -47,6 +47,14 @@ public class AnswerComposer {
                 return (oos != null && !oos.isBlank()) ? oos : "（超出知识库范围，无法作答）";
             }
 
+            // P4: 审查分支——ClauseReviewer 已产出纯文本审查报告，直接作为最终答复。
+            // 审查场景不经过 retriever，无 handoff/引用依据/计算结论，故跳过普通 QA 拼装段。
+            // 键名 "rewriteSuggestions" 仅由 ClauseReviewerNode 写入，普通问答不会携带，零误触发。
+            String review = state.getRewriteSuggestions();
+            if (review != null && !review.isBlank()) {
+                return review.trim();
+            }
+
             StringBuilder sb = new StringBuilder();
 
             // ① 上轮条款锚定（多轮追问保上下文）

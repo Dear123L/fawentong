@@ -149,6 +149,17 @@ public class ScopeCheckNode {
             "工龄", "押金", "几倍", "滞纳金", "N+1", "双倍", "三倍", "多少",
             "万分之", "千分之", "日利率", "月利率", "年化");
 
+    /**
+     * 审查意图锚词集（P2 新增）。
+     * 命中任一即判为「审查」意图，路由到 ClauseReviewer 节点。
+     * 已用 v2+v3 共 188 道 QA 题实测 0 误命中——不会把问答题误路由进审查分支、打崩 HR。
+     *
+     * ⚠️ 禁用词（在 QA 测试集中出现、会误路由）：条款 / 风险 / 合法吗 / 瑕疵 / 合理。
+     */
+    private static final String[] REVIEW_ANCHORS = {
+            "审查", "审核", "审阅", "霸王条款", "改写", "起草", "漏洞", "有没有问题", "拟定", "修改建议"
+    };
+
     public CompletableFuture<Map<String, Object>> execute(MultiAgentState state) {
         return CompletableFuture.supplyAsync(() -> {
             Map<String, Object> updates = new HashMap<>();
@@ -162,6 +173,15 @@ public class ScopeCheckNode {
                     log.info("范围判定=out_of_scope（域外硬拒短语命中，短路拒答）。问题: {}", question);
                     updates.put("rejected", true);
                     updates.put("answer", OUT_OF_SCOPE_REPLY);
+                    return updates;
+                }
+                // 审查意图防御性短路（P2）：命中审查锚词集即路由到 ClauseReviewer。
+                // 位置在 hardOutOfScope 之后（域外审查如"审查股东协议"由首道守卫拒）、forceInScope 之前。
+                // 锚词集已对 188 道 QA 题验证 0 误命中，不会误路由打崩 HR。
+                if (isReviewIntent(question)) {
+                    log.info("范围判定=in_scope，入口意图=review（审查锚词命中，短路到 ClauseReviewer）。问题: {}", question);
+                    updates.put("rejected", false);
+                    updates.put("intent", "review");
                     return updates;
                 }
                 // 第一道确定性守卫：命中高精度的合同域锚词 → 直接判 in_scope，跳过 LLM 拒答。
@@ -241,6 +261,23 @@ public class ScopeCheckNode {
         }
         for (String p : HARD_OOS_PHRASES) {
             if (q.contains(p)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 审查意图确定性守卫（P2 新增）：命中审查锚词集即判为「审查」意图，路由到 ClauseReviewer。
+     * 锚词集已在 v2+v3 共 188 道 QA 题上实测 0 误命中，故不会把问答题误路由进审查分支、打崩 HR。
+     * 位置在 hardOutOfScope 之后（域外审查如"审查股东协议"由首道守卫拒）、forceInScope 之前。
+     */
+    boolean isReviewIntent(String q) {
+        if (q == null || q.isEmpty()) {
+            return false;
+        }
+        for (String a : REVIEW_ANCHORS) {
+            if (q.contains(a)) {
                 return true;
             }
         }

@@ -17,14 +17,18 @@ import static org.bsc.langgraph4j.StateGraph.START;
 /**
  * 多智能体编排图
  *
- * 节点：scopeCheck（范围判定+意图路由） -> retriever（检索+计算） -> critic（拼装+评审）
+ * 节点：scopeCheck（范围判定+意图路由） -> { retriever（检索+计算） | clauseReviewer（合同审查） } -> critic（拼装+评审）
  * 条件路由：
- *   scopeCheck：out_of_scope -> END（拒答短路），否则 -> retriever
- *   critic：needsMore -> retriever（重规划重检索），否则 -> END
+ *   scopeCheck：out_of_scope -> END（拒答短路）；intent=review -> clauseReviewer；否则 -> retriever
+ *   critic：needsMore -> retriever（重规划重检索），否则 -> END；审查分支 needsMore 恒为 false
  *
  * <p>原为 4 节点（answer 为独立的综合节点）。答案拼装已降级为纯函数组件
- * {@link AnswerComposer} 并入 {@link CriticNode}，图拓扑变为 3 节点。
- * 改动理由与影响见 {@code 结构精简评估.md}。
+ * {@link AnswerComposer} 并入 {@link CriticNode}，图拓扑变为 3 主线 + 1 审查分支。
+ * 改动理由与影响见 {@code 结构精简评估.md}。</p>
+ *
+ * <p>审查分支（P2-P3 新增）：ScopeCheck 命中审查锚词 -> intent="review" -> clauseReviewer
+ * 调 {@link ClauseReviewEngine} 跑完整审查 -> 报告存 state.rewriteSuggestions -> critic 拼装。
+ * 审查逻辑只存在于 ClauseReviewEngine 一处，Agent 外的旧审查模块不动。</p>
  */
 @Slf4j
 @Component
@@ -33,6 +37,7 @@ public class MultiAgentGraph {
 
     private final ScopeCheckNode scopeCheckNode;
     private final RetrieverAgentNode retrieverAgentNode;
+    private final ClauseReviewerNode clauseReviewerNode;
     private final CriticNode criticNode;
 
     private CompiledGraph<MultiAgentState> compiledGraph;
@@ -47,10 +52,11 @@ public class MultiAgentGraph {
 
         graph.addNode("scopeCheck", scopeCheckNode::execute);
         graph.addNode("retriever", retrieverAgentNode::execute);
+        graph.addNode("clauseReviewer", clauseReviewerNode::execute);
         graph.addNode("critic", criticNode::execute);
 
         // 范围判定作为最前置关卡：out_of_scope 直接短路到 END（拒答，省去检索/生成）；否则进入正常链路。
-        // scopeCheck 同时完成意图识别并写入 intent，故这里直接路由到 retriever。
+        // scopeCheck 同时完成意图识别并写入 intent：review 意图路由到 clauseReviewer，其余路由到 retriever。
         graph.addEdge(START, "scopeCheck");
         graph.addConditionalEdges("scopeCheck",
                 (state) -> CompletableFuture.supplyAsync(() -> {
@@ -58,16 +64,23 @@ public class MultiAgentGraph {
                         log.info("范围判定路由 -> END（out_of_scope 拒答）");
                         return "end";
                     }
+                    if ("review".equals(state.getIntent())) {
+                        log.info("范围判定路由 -> clauseReviewer（审查意图）");
+                        return "clauseReviewer";
+                    }
                     log.info("范围判定路由 -> retriever");
                     return "retriever";
                 }),
-                Map.of("retriever", "retriever", "end", END)
+                Map.of("retriever", "retriever", "clauseReviewer", "clauseReviewer", "end", END)
         );
 
         // 计算由 Retriever 内部承担：依据 intent(both/calculate) 决定是否触发（门控）。
         // 入口意图由 ScopeCheck 在 scope 判定后写入 intent。
         // 检索（含可能的计算）完成后直接进入评审——答案拼装已并入 CriticNode（见 AnswerComposer）。
         graph.addEdge("retriever", "critic");
+
+        // 审查分支：ClauseReviewer 产出审查报告后进入评审；审查不需要回退重检索（needsMore 强制 false）。
+        graph.addEdge("clauseReviewer", "critic");
 
         // 评审后路由：判定不足且未达上限 -> 回退重检索（重规划）；否则结束
         graph.addConditionalEdges("critic",

@@ -134,6 +134,17 @@ public class MultiAgentState extends AgentState {
         super.data().put("answer", value);
     }
 
+    // rewriteSuggestions：ClauseReviewer 产出的纯文本审查报告（审查分支最终答复）。
+    // P4 由 AnswerComposer 在审查分支直接拼装返回；键名与 ClauseReviewerNode 写入一致。
+    public String getRewriteSuggestions() {
+        Object v = super.data().get("rewriteSuggestions");
+        return v instanceof String ? (String) v : "";
+    }
+
+    public void setRewriteSuggestions(String value) {
+        super.data().put("rewriteSuggestions", value == null ? "" : value);
+    }
+
     // ===== 评测元数据桥接字段（供 /chatAgent/multiDebug 回传，不影响生产链路） =====
 
     // retrievedDocs：来自内层 AgenticRagGraph 检索结果（RetrieverAgentNode 桥接）
@@ -145,6 +156,20 @@ public class MultiAgentState extends AgentState {
 
     public void setRetrievedDocs(List<Map<String, Object>> value) {
         super.data().put("retrievedDocs", value);
+    }
+
+    // gradedDocs：内层 AgenticRagGraph **评分门过滤后**的片段（过门，通常 top8）。
+    // 与 retrievedDocs（门前原始召回，top50）并存——两者口径不同：
+    //   · 评测指标须用本字段（与历史基线的门后 top8 对齐）
+    //   · retrievedDocs 仅用于排查召回质量
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> getGradedDocs() {
+        Object v = super.data().get("gradedDocs");
+        return v instanceof List ? (List<Map<String, Object>>) v : new ArrayList<>();
+    }
+
+    public void setGradedDocs(List<Map<String, Object>> value) {
+        super.data().put("gradedDocs", value);
     }
 
     // extractedParams：计算智能体抽取的结构化参数（CalculatorAgentNode 桥接）

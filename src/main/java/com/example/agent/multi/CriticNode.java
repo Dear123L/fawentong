@@ -46,18 +46,28 @@ public class CriticNode {
                 String answer = answerComposer.compose(state);
                 updates.put("answer", answer);
 
-                boolean heuristicBad = isHeuristicInsufficient(answer);
-                boolean llmBad = llmSaysInsufficient(answer, state.getQuestion());
+                // P4: 审查意图感知——审查报告已定稿（ClauseReviewer 产出 + AnswerComposer 审查分支拼装），
+                // 不需要回退重检索，needsMore 强制 false；并跳过 LLM 评审省一次调用。
+                // （ClauseReviewer 也已置 needsMore=false，双保险。）
+                String intent = state.getIntent();
+                boolean reviewIntent = "review".equals(intent);
 
-                boolean insufficient = heuristicBad || llmBad;
-                int retry = state.getRetryCount();
-                boolean needsMore = insufficient && retry < MAX_RETRY;
+                boolean needsMore;
+                if (reviewIntent) {
+                    needsMore = false;
+                } else {
+                    boolean heuristicBad = isHeuristicInsufficient(answer);
+                    boolean llmBad = llmSaysInsufficient(answer, state.getQuestion());
+
+                    boolean insufficient = heuristicBad || llmBad;
+                    int retry = state.getRetryCount();
+                    needsMore = insufficient && retry < MAX_RETRY;
+                    updates.put("retryCount", retry + (needsMore ? 1 : 0));
+                }
 
                 updates.put("needsMore", needsMore);
-                updates.put("retryCount", retry + (needsMore ? 1 : 0));
 
-                log.info("Critic 评审: heuristicBad={}, llmBad={}, needsMore={}, retry={}",
-                        heuristicBad, llmBad, needsMore, retry);
+                log.info("Critic 评审: intent={}, needsMore={}", intent, needsMore);
                 return updates;
             } catch (Exception e) {
                 log.error("Critic 评审异常", e);
