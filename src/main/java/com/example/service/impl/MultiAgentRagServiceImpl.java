@@ -82,7 +82,8 @@ public class MultiAgentRagServiceImpl implements MultiAgentRagService {
 
             // 评测元数据：从最终状态抽取 5 个字段，生产 ask 链路完全不变
             Map<String, Object> meta = new HashMap<>();
-            meta.put("retrieved", s.getRetrievedDocs());            // RetrieverAgentNode 桥接
+            meta.put("retrieved", s.getRetrievedDocs());            // RetrieverAgentNode 桥接（门前召回 top50）
+            meta.put("graded", s.getGradedDocs());                  // RetrieverAgentNode 桥接（过门后 top8，评测口径）
             meta.put("extracted", s.getExtractedParams());          // CalculatorAgentNode 桥接
             meta.put("computed_penalty", s.getComputedPenalty());   // CalculatorAgentNode 桥接
             meta.put("rejected", s.isRejected());                   // RetrieverAgentNode 桥接
