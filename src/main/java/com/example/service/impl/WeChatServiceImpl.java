@@ -29,7 +29,7 @@ public class WeChatServiceImpl implements WeChatService {
 
     @Override
     public JsonResponse login(String code, String nickName, String avatarUrl) {
-        // TODO: 上线前恢复微信真实接口调用
+        // 上线前需替换为微信官方接口调用，当前返回模拟结果
         // 请求微信服务器获取 openid/session_key
         String url = String.format(
                 "https://api.weixin.qq.com/sns/jscode2session?appid=%s&secret=%s&js_code=%s&grant_type=authorization_code",

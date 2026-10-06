@@ -107,7 +107,7 @@ public class DashScopeAiAnalysisServiceImpl implements AiAnalysisService {
     }
 
     /**
-     * 调用DashScope API（使用Generation接口，与您之前的代码一致）
+     * 调用 DashScope API，使用 Generation 接口。
      */
     private String callDashScopeApi(String prompt) throws Exception {
         try {
@@ -205,19 +205,15 @@ public class DashScopeAiAnalysisServiceImpl implements AiAnalysisService {
                     JSONObject obj = jsonArray.getJSONObject(i);
                     RiskPoint risk = new RiskPoint();
 
-                    // 设置风险点编号
                     String riskNumber = obj.getString("riskNumber");
                     risk.setRiskNumber(riskNumber != null ? riskNumber : "风险点" + (i + 1));
 
-                    // 设置章节
                     String chapter = obj.getString("chapter");
                     risk.setChapter(chapter != null ? chapter : "未明确章节");
 
-                    // 设置原文
                     String originalText = obj.getString("originalText");
                     risk.setOriginalText(originalText != null ? originalText : "相关合同条款");
 
-                    // 设置风险警告
                     String riskWarning = obj.getString("riskWarning");
                     risk.setRiskWarning(riskWarning != null ? riskWarning : "存在潜在风险，建议仔细审查");
 

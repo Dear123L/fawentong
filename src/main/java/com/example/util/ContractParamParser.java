@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
 /**
  * 违约金/利息问题「确定性数值抽取」（12 法域问答中的典型计算类问题）。
  *
- * <p>背景：原实现依赖 LLM(ReAct) 从问题文本抽取 principal/rate/days，即便 temperature=0，
+ * <p>动机：曾用 LLM(ReAct) 从问题文本抽取 principal/rate/days，即便 temperature=0，
  * DashScope 仍偶发非确定性，且对「万分之五」等中文分数易抽错（如 daily_rate_per_mille 漂到 5），
  * 导致三跑评测计算层 std≈0.059。本类改用<b>确定性正则解析</b>，彻底消除抽取层面的随机性，
  * 同时覆盖知识库缺省（未明说利率时按 C2 的日万分之五=0.5‰）与不可抗力免责（C3）。</p>

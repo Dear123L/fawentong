@@ -30,7 +30,6 @@ public class ContractReviewController {
             @RequestParam("files") List<MultipartFile> files,
             @RequestParam(value = "recordName", required = false) String recordName) {
         try {
-//            TODO
             Long userId = UserContext.getCurrentUserId();
             if (userId == null || !SecurityUtils.isLogin()) {
                 return JsonResponse.authError("用户未登录");

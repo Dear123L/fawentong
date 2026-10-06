@@ -152,13 +152,12 @@ public class DocumentController {
             // 3. 设置响应头 - 针对小程序的简化版本
             HttpHeaders headers = new HttpHeaders();
 
-            // 设置正确的Content-Type
             headers.setContentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.wordprocessingml.document"));
 
             // 小程序通常能处理原始文件名，不需要复杂的编码
             headers.setContentDispositionFormData("attachment", fileName);
 
-            // 设置Content-Length，小程序可能需要
+            // 小程序端需要显式长度
             headers.setContentLength(documentBytes.length);
 
             // 4. 返回文件流

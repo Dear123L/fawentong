@@ -46,7 +46,7 @@ public class DocumentTextExtractorServiceImpl implements DocumentTextExtractorSe
             if (name.endsWith(".txt") || name.endsWith(".md") || name.endsWith(".csv")) {
                 return new String(in.readAllBytes(), StandardCharsets.UTF_8);
             }
-            // TODO: 需要按原实现校对——doc（老格式）与 pdf 分支待补
+            // doc（老格式）与 pdf 分支尚未实现，当前仅支持 docx 与纯文本
             log.warn("暂不支持的文件类型, 按纯文本处理: {}", name);
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (Exception e) {

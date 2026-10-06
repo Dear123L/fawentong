@@ -47,7 +47,7 @@ public class RedisSessionMemoryServiceImpl implements SessionMemoryService {
     private final MemoryMetrics metrics;
     private final HistoryCompressor compressor;
 
-    /** 滑动窗口：保留最近 10 轮对话（每轮 = user + assistant 两条消息），与原实现一致。 */
+    /** 滑动窗口：保留最近 10 轮对话，每轮为 user 与 assistant 两条消息。 */
     private static final int MAX_ROUNDS = 10;
     private static final int MAX_MESSAGES = MAX_ROUNDS * 2;
 
@@ -69,7 +69,7 @@ public class RedisSessionMemoryServiceImpl implements SessionMemoryService {
     /**
      * 检索条款滚动归档（原子 Lua）：prev = cur；cur = 新值。
      * KEYS[1]=curKey, KEYS[2]=prevKey；ARGV[1]=新值JSON, ARGV[2]=TTL秒。
-     * cur 为空时把 prev 删除（首轮无上轮），与原实现 compute 的 remove 语义一致。
+     * cur 为空时删除 prev（首轮无上轮可衔接）。
      */
     private final RedisScript<Void> rollDocsScript = new DefaultRedisScript<>(
             "local cur = redis.call('GET', KEYS[1])\n" +

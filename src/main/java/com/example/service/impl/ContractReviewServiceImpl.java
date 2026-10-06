@@ -92,7 +92,6 @@ public class ContractReviewServiceImpl implements ContractReviewService {
             List<RiskPoint> riskPoints = aiAnalysisService.analyzeContract(contractText);
             log.info("AI分析完成，发现风险点: {}个", riskPoints.size());
             
-            // TODO 7. 创建记录对象
             ReviewRecord record = new ReviewRecord();
             record.setId(System.currentTimeMillis());
             record.setUserId(userId);

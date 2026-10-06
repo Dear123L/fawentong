@@ -31,9 +31,9 @@ public class SecurityConfig {
                 .authorizeHttpRequests(authz -> authz
                         .requestMatchers("/static/**").permitAll()
                         .requestMatchers("/api/wechat/login").permitAll()
-//                        .requestMatchers("/api/contract/**").permitAll()   // TODO 注释
-//                        .requestMatchers("/ai/legal").permitAll()   // TODO 注释
-//                         .requestMatchers("/api/document/**").permitAll()   // TODO 注释
+//   .requestMatchers("/api/contract/**").permitAll()
+//   .requestMatchers("/ai/legal").permitAll()
+//   .requestMatchers("/api/document/**").permitAll()
                         .requestMatchers("/api/**").authenticated()  // 这行要保留
                         .anyRequest().permitAll()
                 )

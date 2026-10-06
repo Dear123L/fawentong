@@ -227,7 +227,7 @@ public class RagVectorServiceImpl implements RagVectorService {
             // 同上：term 查询先抽变量，规避嵌套 lambda 的类型推断丢失
             Query kbFilter = Query.of(t -> t.term(tm -> tm.field("kbId").value(String.valueOf(kbId))));
             // ES 8.15.0 的 KnnQuery.Builder 无 k() 方法（8.15.5+ 才有），
-            // 返回条数由 search().size(topK) 控制；numCandidates 固定 100，
+            // 返回条数由 search().size(topK) 控制；numCandidates 固定 100
             // 即在约 100 个最近邻候选中按相似度取 topK
             KnnQuery knn = KnnQuery.of(k -> k
                     .field("vector")
@@ -312,8 +312,7 @@ public class RagVectorServiceImpl implements RagVectorService {
      *
      * <p>与 {@code backfill_vectors.py} / {@code diag_retrieval.py} 走同一 HTTP 接口，
      * 保证建库脚本与在线服务产生的向量空间一致（模型、维度、归一化口径相同）。
-     * TODO: 需要按原实现校对——原实现是否设置了 {@code parameters.instruction}、
-     *       是否有本地向量缓存（当前每次检索都重算，无缓存）。
+     * <p>每次检索都重新调用 embedding 接口，无本地向量缓存；如需降低延迟可按文本 hash 缓存向量。</p>
      */
     private List<Float> embed(String text) throws Exception {
         Map<String, Object> body = new HashMap<>();

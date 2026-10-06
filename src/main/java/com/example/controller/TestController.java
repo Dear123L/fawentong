@@ -279,7 +279,7 @@ public class TestController {
         Path filePath = dirPath.resolve(fileName);
         Files.copy(file.getInputStream(), filePath);
 
-        // 返回虚拟URL（实际不会访问）
+        // 占位地址，不产生实际请求
         return String.format("%s/test-files/%s/%s", baseUrl, userId, fileName);
     }
 

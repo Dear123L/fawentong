@@ -74,7 +74,6 @@ public class AiLegalChatController {
             }
         }).start();
 
-        // 设置回调
         emitter.onCompletion(() -> {
             log.info("SSE连接完成，sessionId: {}", sessionId);
         });

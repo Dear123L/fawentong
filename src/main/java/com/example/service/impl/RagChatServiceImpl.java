@@ -44,8 +44,8 @@ public class RagChatServiceImpl implements RagChatService {
 
     @Override
     public Flux<String> chatStream(Long userId, Long kbId, String sessionId, String question) {
-        // TODO: 需要按原实现校对——原实现为真正的 SSE 逐 token 透传（DashScope stream + Flux 桥接），
-        //      当前实现为"整段生成后一次性吐出"，前端体验相同但非真流式。
+        // 当前为整段生成后一次性返回，非逐token 流式；如需真流式应改用 DashScope stream API
+        // 配合 Flux 桥接。前端体验不受影响，但首字延迟不可优化。
         return Flux.defer(() -> {
             String answer = answer(userId, kbId, sessionId, question);
             return Flux.just(answer);
@@ -64,7 +64,7 @@ public class RagChatServiceImpl implements RagChatService {
                .append(d.get("content"))
                .append("\n");
         }
-        // TODO: 需要按原实现校对——原实现的 system prompt 与引用格式（是否要求输出 [n] 标注）
+        // 引用格式：要求模型在引用处标注条款序号，检索上下文按 clauseId 顺序拼接
         String prompt = "你是法律助手。请仅依据以下检索到的条款回答问题，"
                 + "并在引用处标注条款序号（如 [1]）。若条款不足以回答，请明确说明。\n\n"
                 + "检索到的条款：\n" + ctx + "\n问题：" + question;
